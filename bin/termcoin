@@ -7,12 +7,18 @@
  */
 
 // bitcoind -server -daemon -rpcuser=bitcoinrpc -rpcpassword=foobar -rpcport=8332 -rpcallowip=127.0.0.1
+// https://github.com/bitcoin/bitcoin/blob/master/src/rpcserver.cpp
+// https://github.com/bitcoin/bitcoin/blob/master/src/rpcrawtransaction.cpp
+// https://github.com/bitcoin/bitcoin/blob/master/src/rpcwallet.cpp
+// http://blockchain.info/api/json_rpc_api
 
 /**
  * Modules
  */
 
 var fs = require('fs')
+  , url = require('url')
+  , util = require('util')
   , blessed = require('blessed')
   , bitcoin = require('bitcoin')
   , path = require('path')
@@ -27,22 +33,26 @@ var coins = {
   bitcoin: {
     name: 'bitcoin',
     daemon: 'bitcoind',
-    config: process.env.HOME + '/.bitcoin/bitcoin.conf'
+    config: process.env.HOME + '/.bitcoin/bitcoin.conf',
+    wallet: process.env.HOME + '/.bitcoin/wallet.dat'
   },
   litecoin: {
     name: 'litecoin',
     daemon: 'litecoind',
-    config: process.env.HOME + '/.litecoin/litecoin.conf'
+    config: process.env.HOME + '/.litecoin/litecoin.conf',
+    wallet: process.env.HOME + '/.bitcoin/wallet.dat'
   },
   dogecoin: {
     name: 'dogecoin',
     daemon: 'dogecoind',
-    config: process.env.HOME + '/.dogecoin/dogecoin.conf'
+    config: process.env.HOME + '/.dogecoin/dogecoin.conf',
+    wallet: process.env.HOME + '/.bitcoin/wallet.dat'
   },
   namecoin: {
     name: 'namecoin',
     daemon: 'namecoind',
-    config: process.env.HOME + '/.namecoin/namecoin.conf'
+    config: process.env.HOME + '/.namecoin/namecoin.conf',
+    wallet: process.env.HOME + '/.bitcoin/wallet.dat'
   }
 };
 
@@ -75,8 +85,9 @@ function getStats(callback) {
       if (err) return callback(err);
       return getTransactions(function(err, transactions) {
         if (err) return callback(err);
-        return getAddresses(function(err, addresses) {
+        return getAddresses(accounts, function(err, addresses) {
           if (err) return callback(err);
+
           for (var i = 0; i < 10; i++) {
             transactions.push({
               txid: i + 1000,
@@ -90,19 +101,7 @@ function getStats(callback) {
               to: 'hello'
             });
           }
-          for (var i = 0; i < 10; i++) {
-            addresses.push({
-              txid: i + 1000,
-              time: Date.now() / 1000 | 0,
-              category: 'send',
-              amount: 1.00,
-              fee: 0.005,
-              confirmations: 23,
-              otheraccount: '1PGFqEzfmQch1gKD3ra4k18PNj3tTUUSqg',
-              message: 'hello',
-              to: 'hello'
-            });
-          }
+
           return callback(null, {
             balance: balance,
             accounts: accounts,
@@ -115,8 +114,44 @@ function getStats(callback) {
   });
 }
 
-function getAddresses(callback) {
-  return callback(null, []);
+// Ridiculous workaround:
+function getAddresses(accounts, callback) {
+  if (opt.host) return callback(null, []);
+
+  if (!callback) {
+    callback = accounts;
+    accounts = null;
+  }
+
+  //return client.getAddressesByAccount('*', function(err, addresses) {
+  //  ;
+  //});
+
+  var wallet = fs.readFileSync(platform.wallet, 'utf8')
+    , m = wallet.match(/[a-zA-Z0-9]{34}/g)
+    , results = [];
+
+  if (!m) return callback(null, results);
+
+  return forEach(m, function(address, next) {
+    return client.getAccount(address, function(err, name) {
+      if (err) return next();
+      results.push({
+        name: name,
+        address: address
+      });
+      return next();
+    });
+  }, function() {
+    if (accounts) {
+      // Exclude the user's addresses.
+      var add = Object.keys(accounts);
+      results = results.filter(function(item) {
+        return add.indexOf(item.address) === -1;
+      });
+    }
+    return callback(null, results);
+  });
 }
 
 function forEach(obj, iter, done) {
@@ -149,6 +184,13 @@ function getAccounts(callback) {
   });
 }
 
+function getProgress(callback) {
+  return client.getBlockCount(function(err, blocks) {
+    if (err) return callback(err);
+    return callback(null, blocks);
+  });
+}
+
 function getTransactions(callback) {
   return client.listTransactions('*', 1000, callback);
 }
@@ -170,8 +212,11 @@ function move(from, to, amount, callback) {
 }
 
 function startServer(callback) {
-  return callback();
-  return cp.execFile('pkill', [platform.daemon], function() {
+  if (opt.host) return callback();
+  console.log('Stopping existing server.');
+  return cp.execFile(platform.daemon, ['stop'], function(err) {
+    if (err) return callback(err);
+    console.log('Starting new server.');
     var args = [
       '-server',
       '-daemon',
@@ -180,7 +225,8 @@ function startServer(callback) {
       '-rpcport=' + config.rpcport,
       '-rpcallowip=127.0.0.1'
     ];
-    return cp.execFile(platform.daemon, args, function() {
+    return cp.execFile(platform.daemon, args, function(err) {
+      if (err) return callback(err);
       return callback();
     });
   });
@@ -319,23 +365,26 @@ function start(stats, callback) {
     label: ' {blue-fg}Syncing{/blue-fg} ',
     tags: true,
     border: 'line',
-    content: 'Syncing...',
+    content: 'Syncing... ',
     tags: true,
     style: {
-      fg: 'black',
+      fg: 'lightblack',
       bar: {
         bg: 'blue'
       }
     }
   });
 
-  tabs.overview._.bar.progress(45);
-  setInterval(function() {
-    tabs.overview._.bar.progress(1);
-    screen.render();
-  }, 1000);
-
-  screen.render();
+  (function self() {
+    return getProgress(function(err, blocks) {
+      if (blocks) {
+        //tabs.overview._.bar.progress(1);
+        tabs.overview._.bar.content = 'Blocks: ' + blocks + ' ';
+        screen.render();
+      }
+      setTimeout(self, 1000);
+    });
+  })();
 
   /**
    * Send
@@ -464,6 +513,19 @@ function start(stats, callback) {
     }
   });
 
+  tabs.send._.form.on('submit', function(data) {
+    var alias = stats.addresses.reduce(function(out, item) {
+      out[item.name] = item;
+      return out;
+    }, {});
+    if (data.address && alias[data.address]) {
+      data.address = alias[data.address].address;
+    }
+    send(data.address, +data.amount, '', '', function(err) {
+      ;
+    });
+  });
+
   /**
    * Receive
    */
@@ -524,6 +586,7 @@ function start(stats, callback) {
       return tabs.receive._.prompt.type(msg, '', function(err, value) {
         // TODO: Create address
         screen.render();
+        refresh();
       });
     }
 
@@ -531,6 +594,7 @@ function start(stats, callback) {
     return tabs.receive._.prompt.type(msg, '', function(err, value) {
       // TODO: Rename address
       screen.render();
+      refresh();
     });
   });
 
@@ -569,6 +633,62 @@ function start(stats, callback) {
     scrollbar: {
       ch: ' '
     }
+  });
+
+  tabs.transactions._.msg = blessed.message({
+    parent: tabs.transactions,
+
+    // XXX Fix in blessed: - not centered
+    //top: 'center',
+    //left: 'center',
+    //height: 'shrink',
+    //width: 'shrink',
+
+    top: 2,
+    left: 4,
+    right: 4,
+    bottom: 2,
+    scrollable: true,
+    alwaysScroll: true,
+    keys: true,
+    vi: true,
+    mouse: true,
+    tags: true,
+    hidden: true,
+    border: 'line',
+    scrollbar: {
+      ch: ' '
+    },
+    style: {
+      scrollbar: {
+        bg: 'blue'
+      }
+    }
+  });
+
+  tabs.transactions._.list.on('select', function(el, index) {
+    var parts = el.getText().trim().split(/\s*\|\s*/);
+    function getTransaction(id, callback) {
+      return callback(null, {
+        txid: id,
+        time: Date.now() / 1000 | 0,
+        category: 'send',
+        amount: 2.23,
+        fee: 0.005,
+        confirmations: 23,
+        otheraccount: '1PGFqEzfmQch1gKD3ra4k18PNj3tTUUSqg',
+        message: 'hello',
+        to: 'hello'
+      });
+    }
+    return getTransaction(parts[0], function(err, transaction) {
+      if (err) return;
+      //var text = JSON.stringify(transaction, null, 2);
+      var text = inspect(transaction);
+      tabs.transactions._.msg.display(text, -1, function() {
+        ;
+      });
+    });
   });
 
   /**
@@ -621,69 +741,105 @@ function start(stats, callback) {
     tags: true
   });
 
-  // https://github.com/bitcoin/bitcoin/blob/master/src/rpcserver.cpp
-  // https://github.com/bitcoin/bitcoin/blob/master/src/rpcrawtransaction.cpp
-  // https://github.com/bitcoin/bitcoin/blob/master/src/rpcwallet.cpp
-  // http://blockchain.info/api/json_rpc_api
+  /**
+   * Loader
+   */
 
-  getStats(function(err, stats) {
-    if (err) return;
-
-    var items;
-
-    // Wallet
-    tabs.overview._.wallet.setContent(
-      '{blue-fg}Balance{blue-fg}: {yellow-fg}'
-      + stats.balance + '{/yellow-fg}');
-
-    // Accounts
-    items = Object.keys(stats.accounts).reduce(function(out, key) {
-      var account = stats.accounts[key];
-      var w = screen.width;
-      var name = account.name || '[none]';
-      var sp = Array(w - (account.address.length + name.length) + 1).join(' ');
-      out.push('{blue-fg}' + name + '{/blue-fg}'
-        + sp + '{green-fg}' + account.address + '{/green-fg}');
-      return out;
-    }, []);
-    items.unshift('new');
-    tabs.receive._.list.setItems(items);
-
-    // Transactions
-    items = stats.transactions.reduce(function(out, t) {
-      // ID | Date | Type | Address | Amount
-      var s = t.txid
-        + ' | '
-        + '{black-fg}' + new Date(t.time * 1000).toISOString() + '{/black-fg}'
-        + ' | '
-        + '{blue-fg}' + t.category + '{/blue-fg}'
-        + ' | '
-        + '{green-fg}' + (t.otheraccount || t.address || t.account) + '{/green-fg}'
-        + ' | '
-        + '{yellow-fg}' + t.amount + '{/yellow-fg}'
-        + (t.fee ? '({red-fg}-' + t.fee + '{/red-fg})' : '');
-      out.push(s);
-      return out;
-    }, []);
-    tabs.transactions._.list.setItems(items);
-
-    tabs.overview._.transactions.setContent(items.slice(0, 3).join('\n'));
-
-    // Addresses
-    items = stats.addresses.reduce(function(out, address) {
-      out.push(JSON.stringify(address));
-      return out;
-    }, []);
-    tabs.addresses._.list.setItems(items);
-
-    // Debug
-    tabs.debug._.data.setContent(JSON.stringify(stats, null, 2));
-
-    screen.render();
+  var loader = blessed.loading({
+    parent: screen,
+    top: 'center',
+    left: 'center',
+    height: 3,
+    align: 'center',
+    width: '50%',
+    tags: true,
+    hidden: true,
+    border: 'line'
   });
 
+  function refresh(callback, noLoad) {
+    if (!noLoad) loader.load('Loading...');
+    return getStats(function(err, stats) {
+      if (err) {
+        if (!noLoad) loader.stop();
+        return;
+      }
+
+      var items;
+
+      // Wallet
+      tabs.overview._.wallet.setContent(
+        '{blue-fg}Balance{blue-fg}: {yellow-fg}'
+        + stats.balance + '{/yellow-fg}');
+
+      // Accounts
+      items = Object.keys(stats.accounts).reduce(function(out, key) {
+        var account = stats.accounts[key];
+        var w = screen.width;
+        var name = account.name || '[none]';
+        var sp = Array(w - (account.address.length + name.length) + 1).join(' ');
+        out.push('{blue-fg}' + name + '{/blue-fg}'
+          + sp + '{green-fg}' + account.address + '{/green-fg}');
+        return out;
+      }, []);
+      items.unshift('new');
+      tabs.receive._.list.setItems(items);
+
+      // Transactions
+      items = stats.transactions.reduce(function(out, t) {
+        // ID | Date | Type | Address | Amount
+        var s = t.txid
+          + ' | '
+          + '{black-fg}' + new Date(t.time * 1000).toISOString() + '{/black-fg}'
+          + ' | '
+          + '{blue-fg}' + t.category + '{/blue-fg}'
+          + ' | '
+          + '{green-fg}' + (t.otheraccount || t.address || t.account) + '{/green-fg}'
+          + ' | '
+          + '{yellow-fg}' + t.amount + '{/yellow-fg}'
+          + (t.fee ? '({red-fg}-' + t.fee + '{/red-fg})' : '');
+        out.push(s);
+        return out;
+      }, []);
+      tabs.transactions._.list.setItems(items);
+
+      tabs.overview._.transactions.setContent(items.slice(0, 3).join('\n'));
+
+      // Addresses
+      items = stats.addresses.reduce(function(out, account) {
+        var w = screen.width;
+        var name = account.name || '[none]';
+        var sp = Array(w - (account.address.length + name.length) + 1).join(' ');
+        out.push('{blue-fg}' + name + '{/blue-fg}'
+          + sp + '{green-fg}' + account.address + '{/green-fg}');
+        return out;
+      }, []);
+      //items.unshift('new');
+      tabs.addresses._.list.setItems(items);
+
+      // Debug
+      tabs.debug._.data.setContent(inspect(stats));
+
+      screen.render();
+
+      if (!noLoad) loader.stop();
+      if (callback) callback();
+    });
+  }
+
+  (function self() {
+    return refresh(function() {
+      return setTimeout(self, 10 * 1000);
+    }, true);
+  })();
+
   screen.key(['C-c', 'q'], function() {
-    //client.stop(function() {
+    if (!opt.host) {
+      client.stop(function() {
+        return callback();
+      });
+      return;
+    }
     return callback();
   });
 
@@ -732,6 +888,20 @@ function parseArg(argv) {
         platform = coins[argv.shift()];
         if (!platform) throw new Error('Unrecognized currency.');
         break;
+      case '--server':
+      case '-s':
+        options.server = url.parse(argv.shift());
+        if (options.server.auth) {
+          var parts = options.server.auth.split(':');
+          options.server.user = parts[0];
+          options.server.password = parts[1] || '';
+        }
+        options.host = options.server.hostname;
+        options.port = +options.server.port;
+        options.user = options.server.user;
+        options.password = options.server.password;
+        options.ssl = options.server.protocol === 'https:';
+        break;
       case '--help':
         return help();
       case '--debug':
@@ -741,7 +911,12 @@ function parseArg(argv) {
         options.mock = true;
         break;
       default:
-        files.push(arg);
+        if (~arg.indexOf('://')) {
+          argv.unshift(arg);
+          argv.unshift('-s');
+        } else {
+          files.push(arg);
+        }
         break;
     }
   }
@@ -762,18 +937,22 @@ function main(argv, callback) {
   opt = parseArg(argv);
   config = readConf();
 
-  config.rpcport = config.rpcport || 8332;
-  config.rpcuser = config.rpcuser || 'bitcoinrpc';
-  config.rpcpassword = config.rpcpassword || 'foobar';
+  config.rpchost = opt.host || config.rpchost || 'localhost';
+  config.rpcport = opt.port || config.rpcport || 8332;
+  config.rpcuser = opt.user || config.rpcuser || 'bitcoinrpc';
+  config.rpcpassword = opt.password || config.rpcpassword || 'foobar';
+  config.rpcssl = opt.ssl || config.rpcssl || false;
 
   client = new bitcoin.Client({
-    host: 'localhost',
+    host: config.rpchost,
     port: config.rpcport,
     user: config.rpcuser,
-    pass: config.rpcpassword
+    pass: config.rpcpassword,
+    ssl: config.rpcssl
   });
 
   return startServer(function(err) {
+    if (err) return callback(err);
     return getStats(function(err, stats) {
       if (err) return callback(err);
       return start(stats, function(err) {
@@ -783,6 +962,21 @@ function main(argv, callback) {
     });
   });
 }
+
+/**
+ * Helpers
+ */
+
+
+function inspect(obj) {
+  return typeof obj !== 'string'
+    ? util.inspect(obj, false, 6, true)
+    : obj;
+}
+
+/**
+ * Execute
+ */
 
 if (!module.parent) {
   process.title = 'termcoin';
