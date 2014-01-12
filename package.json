@@ -1,0 +1,20 @@
+{
+  "name": "termcoin",
+  "description": "A TUI for bitcoin.",
+  "author": "Christopher Jeffrey",
+  "version": "0.0.0",
+  "main": "./bin/termcoin",
+  "bin": "./bin/termcoin",
+  "man": "./man/termcoin.1",
+  "preferGlobal": true,
+  "repository": "git://github.com/chjj/termcoin.git",
+  "homepage": "https://github.com/chjj/termcoin",
+  "bugs": { "url": "http://github.com/chjj/termcoin/issues" },
+  "keywords": ["bitcoin", "tui"],
+  "tags": ["bitcoin", "tui"],
+  "scripts": { "test": "node test" },
+  "dependencies": {
+    "blessed": ">= 0.0.27",
+    "bitcoin": ">= 2.0.1"
+  }
+}

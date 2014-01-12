@@ -1,0 +1,795 @@
+#!/usr/bin/env node
+
+/**
+ * termcoin
+ * Copyright (c) 2013, Christopher Jeffrey
+ * https://github.com/chjj/termcoin
+ */
+
+// bitcoind -server -daemon -rpcuser=bitcoinrpc -rpcpassword=foobar -rpcport=8332 -rpcallowip=127.0.0.1
+
+/**
+ * Modules
+ */
+
+var fs = require('fs')
+  , blessed = require('blessed')
+  , bitcoin = require('bitcoin')
+  , path = require('path')
+  , cp = require('child_process')
+  , config
+  , opt;
+
+var platform
+  , client;
+
+var coins = {
+  bitcoin: {
+    name: 'bitcoin',
+    daemon: 'bitcoind',
+    config: process.env.HOME + '/.bitcoin/bitcoin.conf'
+  },
+  litecoin: {
+    name: 'litecoin',
+    daemon: 'litecoind',
+    config: process.env.HOME + '/.litecoin/litecoin.conf'
+  },
+  dogecoin: {
+    name: 'dogecoin',
+    daemon: 'dogecoind',
+    config: process.env.HOME + '/.dogecoin/dogecoin.conf'
+  },
+  namecoin: {
+    name: 'namecoin',
+    daemon: 'namecoind',
+    config: process.env.HOME + '/.namecoin/namecoin.conf'
+  }
+};
+
+function readConf() {
+  var data;
+
+  try {
+    data = fs.readFileSync(platform.config, 'utf8');
+  } catch (e) {
+    return;
+  }
+
+  data = data.trim().split(/(\r?\n)+/);
+
+  return data.reduce(function(out, line) {
+    var parts = line.trim().split(/\s*=\s*/)
+      , key = parts[0]
+      , val = parts[1];
+
+    out[key] = val;
+
+    return out;
+  }, {});
+}
+
+function getStats(callback) {
+  return getTotalBalance(function(err, balance) {
+    if (err) return callback(err);
+    return getAccounts(function(err, accounts) {
+      if (err) return callback(err);
+      return getTransactions(function(err, transactions) {
+        if (err) return callback(err);
+        return getAddresses(function(err, addresses) {
+          if (err) return callback(err);
+          for (var i = 0; i < 10; i++) {
+            transactions.push({
+              txid: i + 1000,
+              time: Date.now() / 1000 | 0,
+              category: 'send',
+              amount: 2.23,
+              fee: 0.005,
+              confirmations: 23,
+              otheraccount: '1PGFqEzfmQch1gKD3ra4k18PNj3tTUUSqg',
+              message: 'hello',
+              to: 'hello'
+            });
+          }
+          for (var i = 0; i < 10; i++) {
+            addresses.push({
+              txid: i + 1000,
+              time: Date.now() / 1000 | 0,
+              category: 'send',
+              amount: 1.00,
+              fee: 0.005,
+              confirmations: 23,
+              otheraccount: '1PGFqEzfmQch1gKD3ra4k18PNj3tTUUSqg',
+              message: 'hello',
+              to: 'hello'
+            });
+          }
+          return callback(null, {
+            balance: balance,
+            accounts: accounts,
+            transactions: transactions,
+            addresses: addresses
+          });
+        });
+      });
+    });
+  });
+}
+
+function getAddresses(callback) {
+  return callback(null, []);
+}
+
+function forEach(obj, iter, done) {
+  var pending = obj.length;
+  function next() {
+    --pending || done();
+  }
+  obj.forEach(function(item, i) {
+    iter(item, next, i);
+  });
+}
+
+function getAccounts(callback) {
+  var results = {};
+  return client.listAccounts(function(err, accounts) {
+    if (err) return callback(err);
+    return forEach(Object.keys(accounts), function(name, next) {
+      return client.getAccountAddress(name, function(err, address) {
+        if (err) return next();
+        results[address] = {
+          name: name,
+          address: address,
+          balance: accounts[name]
+        };
+        return next();
+      });
+    }, function() {
+      return callback(null, results);
+    });
+  });
+}
+
+function getTransactions(callback) {
+  return client.listTransactions('*', 1000, callback);
+}
+
+function getTotalBalance(callback) {
+  return client.getBalance('*', 6, callback);
+}
+
+function createAddress(name, callback) {
+  return client.getAccountAddress(name, callback);
+}
+
+function send(address, amount, comment, commentTo, callback) {
+  return client.sendToAddress(address, amount, comment, commentTo, callback);
+}
+
+function move(from, to, amount, callback) {
+  return client.move(from, to, amount, callback);
+}
+
+function startServer(callback) {
+  return callback();
+  return cp.execFile('pkill', [platform.daemon], function() {
+    var args = [
+      '-server',
+      '-daemon',
+      '-rpcuser=' + config.rpcuser,
+      '-rpcpassword=' + config.rpcpassword,
+      '-rpcport=' + config.rpcport,
+      '-rpcallowip=127.0.0.1'
+    ];
+    return cp.execFile(platform.daemon, args, function() {
+      return callback();
+    });
+  });
+}
+
+function start(stats, callback) {
+  var screen = blessed.screen({
+    autoPadding: true
+  });
+
+  var target;
+
+  var bar = blessed.listbar({
+    parent: screen,
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    keys: true,
+    mouse: true,
+    autoCommandKeys: true,
+    style: {
+      bg: 'black',
+      item: {
+        bg: 'blue'
+      },
+      selected: {
+        bg: 'lightblue'
+      },
+      prefix: {
+        fg: 'green'
+      }
+    }
+  });
+
+  var sep = blessed.line({
+    parent: screen,
+    top: 1,
+    left: 0,
+    right: 0,
+    orientation: 'horizontal'
+  });
+
+  var tabs = {};
+
+  ['overview',
+   'send',
+   'receive',
+   'transactions',
+   'addresses',
+   'miner',
+   'debug'].forEach(function(name) {
+    var tab = tabs[name] = blessed.box({
+      top: 2,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      //label: name[0].toUpperCase() + name.substring(1),
+      scrollable: true,
+      keys: true,
+      vi: true,
+      alwaysScroll: true,
+      //hidden: true,
+      scrollbar: {
+        ch: ' '
+      },
+      style: {
+        scrollbar: {
+          inverse: true
+        }
+      }
+    });
+
+    bar.addItem({
+      text: name,
+      callback: function() {
+        if (target) target.detach();
+        screen.append(tab);
+        // XXX Fix in blessed!
+        screen._listenKeys(tab);
+        //if (target) target.hide();
+        //tab.show();
+
+        tab.focus();
+        target = tab;
+        screen.render();
+      }
+    });
+  });
+
+  bar.commands[0].callback();
+
+  /**
+   * Overview
+   */
+
+  tabs.overview._.wallet = blessed.text({
+    parent: tabs.overview,
+    top: 0,
+    left: 3,
+    height: 'shrink',
+    width: '40%',
+    label: ' {blue-fg}Wallet{/blue-fg} ',
+    tags: true,
+    border: {
+      type: 'line'
+    },
+    content: 'No balance.',
+    tags: true
+  });
+
+  tabs.overview._.transactions = blessed.text({
+    parent: tabs.overview,
+    top: 0,
+    left: '50%',
+    height: 'shrink',
+    width: '40%',
+    label: ' {blue-fg}Transactions{/blue-fg} ',
+    tags: true,
+    border: {
+      type: 'line'
+    },
+    content: 'No transactions.',
+    tags: true
+  });
+
+  tabs.overview._.bar = blessed.progressbar({
+    parent: tabs.overview,
+    bottom: 1,
+    left: 3,
+    height: 'shrink',
+    width: '40%',
+    orientation: 'horizontal',
+    filled: 0,
+    ch: '|',
+    label: ' {blue-fg}Syncing{/blue-fg} ',
+    tags: true,
+    border: 'line',
+    content: 'Syncing...',
+    tags: true,
+    style: {
+      fg: 'black',
+      bar: {
+        bg: 'blue'
+      }
+    }
+  });
+
+  tabs.overview._.bar.progress(45);
+  setInterval(function() {
+    tabs.overview._.bar.progress(1);
+    screen.render();
+  }, 1000);
+
+  screen.render();
+
+  /**
+   * Send
+   */
+
+  tabs.send.on('focus', function() {
+    tabs.send._.form.focus();
+  });
+
+  tabs.send._.form = blessed.form({
+    parent: tabs.send,
+    top: 0,
+    left: 1,
+    right: 1,
+    height: 9,
+    keys: true,
+    mouse: true,
+    // XXX Fix this in blessed:
+    //height: 'shrink',
+    //width: 'shrink',
+    label: ' {blue-fg}Send{/blue-fg} ',
+    border: 'line',
+    tags: true
+  });
+
+  tabs.send._.ttext = blessed.text({
+    parent: tabs.send._.form,
+    top: 0,
+    left: 0,
+    height: 1,
+    content: 'Pay {underline}T{/underline}o:',
+    tags: true
+  });
+
+  tabs.send._.address = blessed.textbox({
+    parent: tabs.send._.form,
+    name: 'address',
+    inputOnFocus: true,
+    top: 0,
+    left: 9,
+    right: 1,
+    height: 1,
+    style: {
+      bg: 'black',
+      focus: {
+        bg: 'blue'
+      },
+      hover: {
+        bg: 'blue'
+      }
+    }
+  });
+
+  tabs.send._.ltext = blessed.text({
+    parent: tabs.send._.form,
+    top: 2,
+    left: 0,
+    height: 1,
+    content: ' {underline}L{/underline}abel:',
+    tags: true
+  });
+
+  tabs.send._.label = blessed.textbox({
+    parent: tabs.send._.form,
+    name: 'label',
+    inputOnFocus: true,
+    top: 2,
+    left: 9,
+    right: 1,
+    height: 1,
+    style: {
+      bg: 'black',
+      focus: {
+        bg: 'blue'
+      },
+      hover: {
+        bg: 'blue'
+      }
+    }
+  });
+
+  tabs.send._.mtext = blessed.text({
+    parent: tabs.send._.form,
+    top: 4,
+    left: 0,
+    height: 1,
+    content: 'A{underline}m{/underline}ount:',
+    tags: true
+  });
+
+  tabs.send._.amount = blessed.textbox({
+    parent: tabs.send._.form,
+    name: 'amount',
+    inputOnFocus: true,
+    top: 4,
+    left: 9,
+    right: 1,
+    height: 1,
+    style: {
+      bg: 'black',
+      focus: {
+        bg: 'blue'
+      },
+      hover: {
+        bg: 'blue'
+      }
+    }
+  });
+
+  tabs.send._.amount = blessed.button({
+    parent: tabs.send._.form,
+    name: 'submit',
+    top: 6,
+    right: 1,
+    height: 1,
+    width: 'shrink',
+    content: 'Send',
+    style: {
+      bg: 'black',
+      focus: {
+        bg: 'blue'
+      },
+      hover: {
+        bg: 'blue'
+      }
+    }
+  });
+
+  /**
+   * Receive
+   */
+
+  tabs.receive.on('focus', function() {
+    tabs.receive._.list.focus();
+  });
+
+  tabs.receive._.list = blessed.list({
+    parent: tabs.receive,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    keys: true,
+    vi: true,
+    mouse: true,
+    tags: true,
+    style: {
+      scrollbar: {
+        inverse: true
+      },
+      selected: {
+        bg: 'blue'
+      },
+      item: {
+        hover: {
+          bg: 'blue'
+        }
+      }
+    },
+    scrollbar: {
+      ch: ' '
+    }
+  });
+
+  tabs.receive._.prompt = blessed.prompt({
+    parent: tabs.receive,
+    top: 'center',
+    left: 'center',
+    keys: true,
+    vi: true,
+    mouse: true,
+    tags: true,
+    content: 'Label:',
+    border: 'line',
+    hidden: true
+  });
+
+  tabs.receive._.list.on('select', function(el, index) {
+    var parts = el.getText().trim().split(/\s+/)
+      , label = parts[0]
+      , address = parts[1]
+      , msg;
+
+    if (label === 'new') {
+      msg = 'Label for new address:';
+      return tabs.receive._.prompt.type(msg, '', function(err, value) {
+        // TODO: Create address
+        screen.render();
+      });
+    }
+
+    msg = 'Label for {blue-fg}' + address + '{/blue-fg}:';
+    return tabs.receive._.prompt.type(msg, '', function(err, value) {
+      // TODO: Rename address
+      screen.render();
+    });
+  });
+
+
+  /**
+   * Transactions
+   */
+
+  tabs.transactions.on('focus', function() {
+    tabs.transactions._.list.focus();
+  });
+
+  tabs.transactions._.list = blessed.list({
+    parent: tabs.transactions,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    keys: true,
+    vi: true,
+    mouse: true,
+    tags: true,
+    style: {
+      scrollbar: {
+        inverse: true
+      },
+      selected: {
+        bg: 'blue'
+      },
+      item: {
+        hover: {
+          bg: 'blue'
+        }
+      }
+    },
+    scrollbar: {
+      ch: ' '
+    }
+  });
+
+  /**
+   * Addresses
+   */
+
+  tabs.addresses.on('focus', function() {
+    tabs.addresses._.list.focus();
+  });
+
+  tabs.addresses._.list = blessed.list({
+    parent: tabs.addresses,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    keys: true,
+    vi: true,
+    mouse: true,
+    tags: true,
+    style: {
+      scrollbar: {
+        inverse: true
+      },
+      selected: {
+        bg: 'blue'
+      },
+      item: {
+        hover: {
+          bg: 'blue'
+        }
+      }
+    },
+    scrollbar: {
+      ch: ' '
+    }
+  });
+
+  /**
+   * Debug
+   */
+
+  tabs.debug._.data = blessed.text({
+    parent: tabs.debug,
+    top: 0,
+    left: 3,
+    height: 'shrink',
+    width: 'shrink',
+    content: '',
+    tags: true
+  });
+
+  // https://github.com/bitcoin/bitcoin/blob/master/src/rpcserver.cpp
+  // https://github.com/bitcoin/bitcoin/blob/master/src/rpcrawtransaction.cpp
+  // https://github.com/bitcoin/bitcoin/blob/master/src/rpcwallet.cpp
+  // http://blockchain.info/api/json_rpc_api
+
+  getStats(function(err, stats) {
+    if (err) return;
+
+    var items;
+
+    // Wallet
+    tabs.overview._.wallet.setContent(
+      '{blue-fg}Balance{blue-fg}: {yellow-fg}'
+      + stats.balance + '{/yellow-fg}');
+
+    // Accounts
+    items = Object.keys(stats.accounts).reduce(function(out, key) {
+      var account = stats.accounts[key];
+      var w = screen.width;
+      var name = account.name || '[none]';
+      var sp = Array(w - (account.address.length + name.length) + 1).join(' ');
+      out.push('{blue-fg}' + name + '{/blue-fg}'
+        + sp + '{green-fg}' + account.address + '{/green-fg}');
+      return out;
+    }, []);
+    items.unshift('new');
+    tabs.receive._.list.setItems(items);
+
+    // Transactions
+    items = stats.transactions.reduce(function(out, t) {
+      // ID | Date | Type | Address | Amount
+      var s = t.txid
+        + ' | '
+        + '{black-fg}' + new Date(t.time * 1000).toISOString() + '{/black-fg}'
+        + ' | '
+        + '{blue-fg}' + t.category + '{/blue-fg}'
+        + ' | '
+        + '{green-fg}' + (t.otheraccount || t.address || t.account) + '{/green-fg}'
+        + ' | '
+        + '{yellow-fg}' + t.amount + '{/yellow-fg}'
+        + (t.fee ? '({red-fg}-' + t.fee + '{/red-fg})' : '');
+      out.push(s);
+      return out;
+    }, []);
+    tabs.transactions._.list.setItems(items);
+
+    tabs.overview._.transactions.setContent(items.slice(0, 3).join('\n'));
+
+    // Addresses
+    items = stats.addresses.reduce(function(out, address) {
+      out.push(JSON.stringify(address));
+      return out;
+    }, []);
+    tabs.addresses._.list.setItems(items);
+
+    // Debug
+    tabs.debug._.data.setContent(JSON.stringify(stats, null, 2));
+
+    screen.render();
+  });
+
+  screen.key(['C-c', 'q'], function() {
+    //client.stop(function() {
+    return callback();
+  });
+
+  screen.render();
+}
+
+function parseArg(argv) {
+  var argv = argv.slice(2)
+    , options = {}
+    , files = [];
+
+  function getarg() {
+    var arg = argv.shift();
+
+    if (arg.indexOf('--') === 0) {
+      // e.g. --opt
+      arg = arg.split('=');
+      if (arg.length > 1) {
+        // e.g. --opt=val
+        argv.unshift(arg.slice(1).join('='));
+      }
+      arg = arg[0];
+    } else if (arg[0] === '-') {
+      if (arg.length > 2) {
+        // e.g. -abc
+        argv = arg.substring(1).split('').map(function(ch) {
+          return '-' + ch;
+        }).concat(argv);
+        arg = argv.shift();
+      } else {
+        // e.g. -a
+      }
+    } else {
+      // e.g. foo
+    }
+
+    return arg;
+  }
+
+  while (argv.length) {
+    arg = getarg();
+    switch (arg) {
+      case '-h':
+      case '--currency':
+      case '-c':
+        platform = coins[argv.shift()];
+        if (!platform) throw new Error('Unrecognized currency.');
+        break;
+      case '--help':
+        return help();
+      case '--debug':
+        options.debug = true;
+        break;
+      case '--mock':
+        options.mock = true;
+        break;
+      default:
+        files.push(arg);
+        break;
+    }
+  }
+
+  if (!platform) {
+    platform = coins.bitcoin;
+  }
+
+  return options;
+}
+
+function help() {
+  console.log('termcoin - a text ui for bitcoin/litecoin/dogecoin/etc.');
+  return process.exit(0);
+}
+
+function main(argv, callback) {
+  opt = parseArg(argv);
+  config = readConf();
+
+  config.rpcport = config.rpcport || 8332;
+  config.rpcuser = config.rpcuser || 'bitcoinrpc';
+  config.rpcpassword = config.rpcpassword || 'foobar';
+
+  client = new bitcoin.Client({
+    host: 'localhost',
+    port: config.rpcport,
+    user: config.rpcuser,
+    pass: config.rpcpassword
+  });
+
+  return startServer(function(err) {
+    return getStats(function(err, stats) {
+      if (err) return callback(err);
+      return start(stats, function(err) {
+        if (err) return callback(err);
+        return callback();
+      });
+    });
+  });
+}
+
+if (!module.parent) {
+  process.title = 'termcoin';
+  main(process.argv.slice(), function(err) {
+    if (err) throw err;
+    return process.exit(0);
+  });
+} else {
+  module.exports = main;
+}
