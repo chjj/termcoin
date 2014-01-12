@@ -127,10 +127,6 @@ function getAddresses(accounts, callback) {
     accounts = null;
   }
 
-  //return client.call('getaddressesbyaccount', ['*'], function(err, addresses) {
-  //  ;
-  //});
-
   var wallet = fs.readFileSync(platform.wallet, 'utf8')
     , m = wallet.match(/[a-zA-Z0-9]{34}/g)
     , results = [];
@@ -532,13 +528,16 @@ function start(stats, callback) {
     if (data.address && alias[data.address]) {
       data.address = alias[data.address].address;
     }
-    send(data.address, +data.amount, function(err) {
+    send(data.address, +data.amount, function(err, result) {
       if (err) return msg.error(err.message);
-      msg.display('Transaction completed successfully.');
+      if (!result || !Object.keys(result).length) {
+        return msg.error('Transaction not completed.');
+      }
+      msg.display('Transaction completed successfully: ' + result.txid + '.');
     });
   });
 
-  tabs.send._.picker = blessed.picklist({
+  tabs.send._.picker = blessed.list({
     parent: tabs.send._.form,
     top: 'center',
     left: 'center',
@@ -549,6 +548,7 @@ function start(stats, callback) {
     vi: true,
     mouse: true,
     tags: true,
+    hidden: true,
     style: {
       scrollbar: {
         inverse: true
@@ -575,6 +575,7 @@ function start(stats, callback) {
     tabs.send._.picker.pick(function(err, value) {
       if (err) return;
       tabs.send._.address.setValue(value);
+      screen.render();
     });
   });
 
