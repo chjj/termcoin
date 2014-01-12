@@ -538,6 +538,46 @@ function start(stats, callback) {
     });
   });
 
+  tabs.send._.picker = blessed.picklist({
+    parent: tabs.send._.form,
+    top: 'center',
+    left: 'center',
+    height: '50%',
+    width: '70%',
+    border: 'line',
+    keys: true,
+    vi: true,
+    mouse: true,
+    tags: true,
+    style: {
+      scrollbar: {
+        inverse: true
+      },
+      selected: {
+        bg: 'blue'
+      },
+      item: {
+        hover: {
+          bg: 'blue'
+        }
+      }
+    },
+    scrollbar: {
+      ch: ' '
+    }
+  });
+
+  tabs.send._.address.key('C-e', function() {
+    var addresses = stats.addresses.map(function(item) {
+      return item.name || item.address;
+    });
+    tabs.send._.picker.setItems(addresses);
+    tabs.send._.picker.pick(function(err, value) {
+      if (err) return;
+      tabs.send._.address.setValue(value);
+    });
+  });
+
   /**
    * Receive
    */
@@ -793,11 +833,13 @@ function start(stats, callback) {
 
   function refresh(callback, noLoad) {
     if (!noLoad) loader.load('Loading...');
-    return getStats(function(err, stats) {
+    return getStats(function(err, stats_) {
       if (err) {
         if (!noLoad) loader.stop();
         return;
       }
+
+      stats = stats_;
 
       var items;
 
