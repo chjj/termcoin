@@ -297,12 +297,10 @@ function start(stats, callback) {
       left: 0,
       right: 0,
       bottom: 0,
-      //label: name[0].toUpperCase() + name.substring(1),
       scrollable: true,
       keys: true,
       vi: true,
       alwaysScroll: true,
-      //hidden: true,
       scrollbar: {
         ch: ' '
       },
@@ -318,11 +316,6 @@ function start(stats, callback) {
       callback: function() {
         if (target) target.detach();
         screen.append(tab);
-        // XXX Fix in blessed!
-        screen._listenKeys(tab);
-        //if (target) target.hide();
-        //tab.show();
-
         tab.focus();
         target = tab;
         screen.render();
