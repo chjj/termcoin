@@ -402,7 +402,7 @@ function start(stats, callback) {
     tabs.send._.form.focus();
   });
 
-  tabs.send._.form = blessed.box({
+  tabs.send._.form = blessed.form({
     parent: tabs.send,
     top: 0,
     left: 1,
