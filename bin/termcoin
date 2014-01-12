@@ -89,28 +89,32 @@ function getStats(callback) {
         if (err) return callback(err);
         return getAddresses(accounts, function(err, addresses) {
           if (err) return callback(err);
+          return getInfo(function(err, info) {
+            if (err) return callback(err);
 
-          if (opt.mock && !transactions.length) {
-            for (var i = 0; i < 10; i++) {
-              transactions.push({
-                txid: i + 1000,
-                time: now / 1000 | 0,
-                category: 'send',
-                amount: 2.23,
-                fee: 0.005,
-                confirmations: 23,
-                otheraccount: '1PGFqEzfmQch1gKD3ra4k18PNj3tTUUSqg',
-                message: 'hello',
-                to: 'hello'
-              });
+            if (opt.mock && !transactions.length) {
+              for (var i = 0; i < 10; i++) {
+                transactions.push({
+                  txid: i + 1000,
+                  time: now / 1000 | 0,
+                  category: 'send',
+                  amount: 2.23,
+                  fee: 0.005,
+                  confirmations: 23,
+                  otheraccount: '1PGFqEzfmQch1gKD3ra4k18PNj3tTUUSqg',
+                  message: 'hello',
+                  to: 'hello'
+                });
+              }
             }
-          }
 
-          return callback(null, {
-            balances: balances,
-            accounts: accounts,
-            transactions: transactions,
-            addresses: addresses
+            return callback(null, {
+              balances: balances,
+              accounts: accounts,
+              transactions: transactions,
+              addresses: addresses,
+              info: info
+            });
           });
         });
       });
@@ -130,6 +134,16 @@ function getAddresses(accounts, callback) {
   var wallet = fs.readFileSync(platform.wallet, 'utf8')
     , m = wallet.match(/[a-zA-Z0-9]{34}/g)
     , results = [];
+
+  // XXX Slower, but better
+  var s = wallet, ma = [];
+  do {
+    m = /^[a-zA-Z0-9]{34}/g.exec(s);
+    if (m) ma.push(m[0]);
+  } while (s = s.substring(1));
+  if (!ma.length) ma = null;
+  m = ma;
+  // END
 
   if (!m) return callback(null, results);
 
@@ -187,7 +201,20 @@ function getAccounts(callback) {
 }
 
 function getProgress(callback) {
-  return client.call('getblockcount', callback);
+  return client.call('getblockcount', function(err, blocks) {
+    if (err) return callback(err);
+    return client.call('getconnectioncount', function(err, connections) {
+      if (err) return callback(err);
+      return callback(null, {
+        blocks: blocks,
+        connections: connections
+      });
+    });
+  });
+}
+
+function getInfo(callback) {
+  return client.call('getinfo', callback);
 }
 
 function getTransactions(callback) {
@@ -209,7 +236,13 @@ function getTotalBalance(callback) {
 }
 
 function createAddress(name, callback) {
-  return client.call('getaccountaddress', [name], callback);
+  //return client.call('setaccount', [address, value], function(err) {
+  //return client.call('getaccountaddress', [name], callback);
+  return client.call('getnewaddress', [name], callback);
+}
+
+function backupWallet(path, callback) {
+  return client.call('backupwallet', [path], callback);
 }
 
 function send(address, amount, callback) {
@@ -345,7 +378,7 @@ function start(stats, callback) {
   tabs.overview._.transactions = blessed.text({
     parent: tabs.overview,
     top: 0,
-    left: '50%',
+    right: 3,
     height: 'shrink',
     width: '40%',
     label: ' {blue-fg}Transactions{/blue-fg} ',
@@ -357,20 +390,37 @@ function start(stats, callback) {
     tags: true
   });
 
-  tabs.overview._.bar = blessed.progressbar({
+  tabs.overview._.data = blessed.box({
     parent: tabs.overview,
-    bottom: 1,
+    bottom: 0,
     left: 3,
-    height: 'shrink',
+    // XXX Fix in blessed:
+    // height: 'shrink',
+    height: 4,
     width: '40%',
+    label: ' {blue-fg}Data{/blue-fg} ',
+    tags: true,
+    border: 'line',
+    content: 'Loading... ',
+    style: {
+      fg: 'lightblack',
+      bar: {
+        bg: 'blue'
+      }
+    }
+  });
+
+  tabs.overview._.bar = blessed.progressbar({
+    parent: tabs.overview._.data,
+    top: 1,
+    left: 0,
+    right: 0,
+    height: 'shrink',
     orientation: 'horizontal',
     filled: 0,
     ch: '|',
-    label: ' {blue-fg}Syncing{/blue-fg} ',
     tags: true,
-    border: 'line',
     content: 'Syncing... ',
-    tags: true,
     style: {
       fg: 'lightblack',
       bar: {
@@ -380,15 +430,49 @@ function start(stats, callback) {
   });
 
   (function self() {
-    return getProgress(function(err, blocks) {
-      if (blocks) {
+    return getProgress(function(err, data) {
+      if (data) {
         //tabs.overview._.bar.progress(1);
-        tabs.overview._.bar.content = 'Blocks: ' + blocks + ' ';
+        tabs.overview._.data.setContent('Connections: ' + data.connections);
+        tabs.overview._.bar.content = 'Blocks: ' + data.blocks + ' ';
         screen.render();
       }
       setTimeout(self, 1000);
     });
   })();
+
+  tabs.overview._.backup = blessed.button({
+    parent: tabs.overview,
+    bottom: 0,
+    right: 3,
+    height: 'shrink',
+    width: 'shrink',
+    content: 'Backup Wallet',
+    tags: true,
+    border: 'line',
+    mouse: true,
+    keys: true,
+    style: {
+      fg: 'default',
+      bg: 'blue',
+      hover: {
+        bg: 'lightblack'
+      },
+      border: {
+        bg: 'blue'
+      }
+    }
+  });
+
+  tabs.overview._.backup.on('press', function() {
+    // TODO: Add prompt for this.
+    // TODO: Add global prompt anyway.
+    backupWallet(process.env.HOME + '/wallet.dat.bak', function(err) {
+      if (err) return msg.error(err.messsage);
+      msg.display('Wallet successfully backed up.');
+      screen.render();
+    });
+  });
 
   /**
    * Send
@@ -525,9 +609,27 @@ function start(stats, callback) {
       out[item.name] = item;
       return out;
     }, {});
+
+    // XXX Own
+    alias = Object.keys(stats.accounts).reduce(function(out, key) {
+      out[stats.accounts[key].name] = stats.accounts[key];
+      return out;
+    }, alias);
+
     if (data.address && alias[data.address]) {
       data.address = alias[data.address].address;
     }
+
+    // XXX Own
+    /*
+    var method;
+    if (stats.accounts[data.address]) {
+      method = move;
+    } else {
+      method = send;
+    }
+    */
+
     send(data.address, +data.amount, function(err, result) {
       if (err) return msg.error(err.message);
       if (!result || !Object.keys(result).length) {
@@ -538,7 +640,7 @@ function start(stats, callback) {
   });
 
   tabs.send._.picker = blessed.list({
-    parent: tabs.send._.form,
+    parent: tabs.send,
     top: 'center',
     left: 'center',
     height: '50%',
@@ -571,7 +673,16 @@ function start(stats, callback) {
     var addresses = stats.addresses.map(function(item) {
       return item.name || item.address;
     });
+
+    // XXX Own
+    var accounts = Object.keys(stats.accounts).map(function(key) {
+      var item = stats.accounts[key];
+      return item.name || item.address;
+    });
+    addresses = addresses.concat(accounts);
+
     tabs.send._.picker.setItems(addresses);
+
     tabs.send._.picker.pick(function(err, value) {
       if (err) return;
       tabs.send._.address.setValue(value);
@@ -628,6 +739,42 @@ function start(stats, callback) {
     hidden: true
   });
 
+  tabs.receive._.question = blessed.question({
+    parent: tabs.receive,
+    top: 'center',
+    left: 'center',
+    width: 'shrink',
+    height: 'shrink',
+    keys: true,
+    vi: true,
+    mouse: true,
+    tags: true,
+    content: 'Label:',
+    border: 'line',
+    hidden: true
+  });
+
+  tabs.receive._.list.key('d', function() {
+    var list = tabs.receive._.list
+      , el = list.items[list.selected];
+
+    var parts = el.getText().trim().split(/\s+/)
+      , label = parts[0]
+      , address = parts[1];
+
+    tabs.receive._.question.ask('Are you sure you want to delete this?', function(err, value) {
+      if (err) return msg.error(err.message);
+      if (!value) return screen.render();
+      return client.call('setaccount', [address], function(err) {
+        if (err) return msg.error(err.message);
+        text = 'Deleted address: {blue-fg}' + address + '{/blue-fg}';
+        msg.display(text);
+        screen.render();
+        refresh();
+      });
+    });
+  });
+
   tabs.receive._.list.on('select', function(el, index) {
     var parts = el.getText().trim().split(/\s+/)
       , label = parts[0]
@@ -639,6 +786,7 @@ function start(stats, callback) {
       return tabs.receive._.prompt.type(text, '', function(err, value) {
         if (err) return msg.error(err.message);
         return createAddress(value, function(err, address) {
+          if (err) return msg.error(err.message);
           text = 'Created address: {blue-fg}' + address + '{/blue-fg}';
           msg.display(text);
           screen.render();
@@ -649,9 +797,15 @@ function start(stats, callback) {
 
     text = 'Label for {blue-fg}' + address + '{/blue-fg}:';
     return tabs.receive._.prompt.type(text, '', function(err, value) {
-      // TODO: Rename address
-      screen.render();
-      refresh();
+      if (err) return msg.error(err.message);
+      if (!value) return;
+      return client.call('setaccount', [address, value], function(err) {
+        if (err) return msg.error(err.message);
+        text = 'Edited label: {blue-fg}' + label + '->' + value + '{/blue-fg}';
+        msg.display(text);
+        screen.render();
+        refresh();
+      });
     });
   });
 
@@ -725,21 +879,27 @@ function start(stats, callback) {
   });
 
   tabs.transactions._.list.on('select', function(el, index) {
-    var parts = el.getText().trim().split(/\s*\|\s*/);
-    function getTransaction(id, callback) {
-      return callback(null, {
-        txid: id,
-        time: now / 1000 | 0,
-        category: 'send',
-        amount: 2.23,
-        fee: 0.005,
-        confirmations: 23,
-        otheraccount: '1PGFqEzfmQch1gKD3ra4k18PNj3tTUUSqg',
-        message: 'hello',
-        to: 'hello'
-      });
-    }
-    return getTransaction(parts[0], function(err, transaction) {
+    var parts = el.getText().trim().split(/\s*\|\s*/)
+      , id = parts[0];
+
+    var getTransaction = function(id, callback) {
+      if (opt.mock) {
+        return callback(null, {
+          txid: id,
+          time: now / 1000 | 0,
+          category: 'send',
+          amount: 2.23,
+          fee: 0.005,
+          confirmations: 23,
+          otheraccount: '1PGFqEzfmQch1gKD3ra4k18PNj3tTUUSqg',
+          message: 'hello',
+          to: 'hello'
+        });
+      }
+      return client.call('gettransaction', [id], callback);
+    };
+
+    return getTransaction(id, function(err, transaction) {
       if (err) return;
       var text = inspect(transaction);
       tabs.transactions._.msg.display(text, -1);
@@ -782,6 +942,95 @@ function start(stats, callback) {
     }
   });
 
+  tabs.addresses._.prompt = blessed.prompt({
+    parent: tabs.addresses,
+    top: 'center',
+    left: 'center',
+    keys: true,
+    vi: true,
+    mouse: true,
+    tags: true,
+    content: 'Label:',
+    border: 'line',
+    hidden: true
+  });
+
+  tabs.addresses._.question = blessed.question({
+    parent: tabs.addresses,
+    top: 'center',
+    left: 'center',
+    width: 'shrink',
+    height: 'shrink',
+    keys: true,
+    vi: true,
+    mouse: true,
+    tags: true,
+    content: 'Label:',
+    border: 'line',
+    hidden: true
+  });
+
+  tabs.addresses._.list.key('d', function() {
+    var list = tabs.addresses._.list
+      , el = list.items[list.selected];
+
+    var parts = el.getText().trim().split(/\s+/)
+      , label = parts[0]
+      , address = parts[1];
+
+    tabs.addresses._.question.ask('Are you sure you want to delete this?', function(err, value) {
+      if (err) return msg.error(err.message);
+      if (!value) return screen.render();
+      return client.call('setaccount', [address], function(err) {
+        if (err) return msg.error(err.message);
+        text = 'Deleted address: {blue-fg}' + address + '{/blue-fg}';
+        msg.display(text);
+        screen.render();
+        refresh();
+      });
+    });
+  });
+
+  tabs.addresses._.list.on('select', function(el, index) {
+    var parts = el.getText().trim().split(/\s+/)
+      , label = parts[0]
+      , address = parts[1]
+      , text;
+
+    if (label === 'new') {
+      text = 'Label for new address:';
+      return tabs.addresses._.prompt.type(text, '', function(err, label) {
+        if (err) return msg.error(err.message);
+        if (!label) return;
+        text = 'Address:';
+        return tabs.addresses._.prompt.type(text, '', function(err, address) {
+          if (err) return msg.error(err.message);
+          if (!address) return;
+          return client.call('setaccount', [address, label], function(err) {
+            if (err) return msg.error(err.message);
+            text = 'Created address: {blue-fg}' + label + '{/blue-fg}';
+            msg.display(text);
+            screen.render();
+            refresh();
+          });
+        });
+      });
+    }
+
+    text = 'Label for {blue-fg}' + address + '{/blue-fg}:';
+    return tabs.addresses._.prompt.type(text, '', function(err, value) {
+      if (err) return msg.error(err.message);
+      if (!value) return;
+      return client.call('setaccount', [address, value], function(err) {
+        if (err) return msg.error(err.message);
+        text = 'Edited label: {blue-fg}' + label + '->' + value + '{/blue-fg}';
+        msg.display(text);
+        screen.render();
+        refresh();
+      });
+    });
+  });
+
   /**
    * Debug
    */
@@ -794,6 +1043,10 @@ function start(stats, callback) {
     width: 'shrink',
     content: '',
     tags: true
+  });
+
+  tabs.debug.key(['f5', 'r'], function() {
+    refresh();
   });
 
   /**
@@ -830,7 +1083,7 @@ function start(stats, callback) {
     border: 'line'
   });
 
-  msg.display('Welcome.');
+  msg.display('Welcome to {blue-fg}termcoin{/blue-fg}!');
 
   function refresh(callback, noLoad) {
     if (!noLoad) loader.load('Loading...');
@@ -846,10 +1099,10 @@ function start(stats, callback) {
 
       // Wallet
       tabs.overview._.wallet.setContent(
-        '{blue-fg}Balance{blue-fg}: {yellow-fg}'
-        + stats.balances.balance.toFixed(2) + '{/yellow-fg}\n'
+        '{blue-fg}Balance{blue-fg}:     {yellow-fg}'
+        + stats.balances.balance.toFixed(8) + '{/yellow-fg}\n'
         + '{red-fg}Unconfirmed{red-fg}: {yellow-fg}'
-        + stats.balances.unconfirmed.toFixed(2) + '{/red-fg}');
+        + stats.balances.unconfirmed.toFixed(8) + '{/red-fg}');
 
       // Accounts
       var accounts = Object.keys(stats.accounts).map(function(key) {
@@ -897,7 +1150,7 @@ function start(stats, callback) {
           + sp + '{green-fg}' + account.address + '{/green-fg}');
         return out;
       }, []);
-      //items.unshift('new');
+      items.unshift('new');
       tabs.addresses._.list.setItems(items);
 
       // Debug
@@ -1143,7 +1396,9 @@ Client.prototype.request = function(options, callback) {
     }
 
     if (body.error) {
-      return callback(null, new Error(body.error));
+      err = new Error(body.error.message);
+      err.code = body.error.code;
+      return callback(err);
     }
 
     return callback(null, body.result);
