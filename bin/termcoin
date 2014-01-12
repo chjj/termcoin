@@ -21,7 +21,6 @@ var fs = require('fs')
   , url = require('url')
   , util = require('util')
   , blessed = require('blessed')
-  , bitcoin = require('bitcoin')
   , path = require('path')
   , cp = require('child_process')
   , config
@@ -128,7 +127,7 @@ function getAddresses(accounts, callback) {
     accounts = null;
   }
 
-  //return client.getAddressesByAccount('*', function(err, addresses) {
+  //return client.call('getaddressesbyaccount', ['*'], function(err, addresses) {
   //  ;
   //});
 
@@ -139,7 +138,7 @@ function getAddresses(accounts, callback) {
   if (!m) return callback(null, results);
 
   return forEach(m, function(address, next) {
-    return client.getAccount(address, function(err, name) {
+    return client.call('getaccount', [address], function(err, name) {
       if (err) return next();
       results.push({
         name: name,
@@ -173,10 +172,10 @@ function forEach(obj, iter, done) {
 
 function getAccounts(callback) {
   var results = {};
-  return client.listAccounts(function(err, accounts) {
+  return client.call('listaccounts', function(err, accounts) {
     if (err) return callback(err);
     return forEach(Object.keys(accounts), function(name, next) {
-      return client.getAccountAddress(name, function(err, address) {
+      return client.call('getaccountaddress', [name], function(err, address) {
         if (err) return next();
         results[address] = {
           name: name,
@@ -192,20 +191,17 @@ function getAccounts(callback) {
 }
 
 function getProgress(callback) {
-  return client.getBlockCount(function(err, blocks) {
-    if (err) return callback(err);
-    return callback(null, blocks);
-  });
+  return client.call('getblockcount', callback);
 }
 
 function getTransactions(callback) {
-  return client.listTransactions('*', 1000, callback);
+  return client.call('listtransactions', ['*', 1000], callback);
 }
 
 function getTotalBalance(callback) {
-  return client.getBalance('*', 6, function(err, balance) {
+  return client.call('getbalance', ['*', 6], function(err, balance) {
     if (err) return callback(err);
-    return client.getBalance('*', 0, function(err, unconfirmed) {
+    return client.call('getbalance', ['*', 0], function(err, unconfirmed) {
       if (err) return callback(err);
       unconfirmed -= balance;
       return callback(null, {
@@ -217,16 +213,15 @@ function getTotalBalance(callback) {
 }
 
 function createAddress(name, callback) {
-  return client.getAccountAddress(name, callback);
+  return client.call('getaccountaddress', [name], callback);
 }
 
-function send(address, amount, comment, commentTo, callback) {
-  //return client.sendToAddress(address, amount, comment, commentTo, callback);
-  return client.sendToAddress(address, amount, callback);
+function send(address, amount, callback) {
+  return client.call('sendtoaddress', [address, amount], callback);
 }
 
 function move(from, to, amount, callback) {
-  return client.move(from, to, amount, callback);
+  return client.call('move', [from, to, amount], callback);
 }
 
 function startServer(callback) {
@@ -537,7 +532,7 @@ function start(stats, callback) {
     if (data.address && alias[data.address]) {
       data.address = alias[data.address].address;
     }
-    send(data.address, +data.amount, '', '', function(err) {
+    send(data.address, +data.amount, function(err) {
       if (err) return msg.error(err.message);
       msg.display('Transaction completed successfully.');
     });
@@ -880,7 +875,7 @@ function start(stats, callback) {
 
   screen.key(['C-c', 'q'], function() {
     if (!opt.host) {
-      //client.stop(function() {
+      //client.call('stop', function() {
       return callback();
       return;
     }
@@ -987,7 +982,7 @@ function main(argv, callback) {
   config.rpcpassword = opt.password || config.rpcpassword || 'foobar';
   config.rpcssl = opt.ssl || config.rpcssl || false;
 
-  client = new bitcoin.Client({
+  client = new Client({
     host: config.rpchost,
     port: config.rpcport,
     user: config.rpcuser,
@@ -1006,6 +1001,111 @@ function main(argv, callback) {
     });
   });
 }
+
+/**
+ * Client
+ */
+
+function Client(options) {
+  this.options = options;
+  this._id = 0;
+}
+
+Client.prototype.call = function(method, params, callback) {
+  if (!callback) {
+    callback = params;
+    params = [];
+  }
+  return this._call({ method: method, params: params }, callback);
+};
+
+Client.prototype._call = function(call, options, callback) {
+  var self = this;
+
+  if (!callback) {
+    callback = options;
+    options = {};
+  }
+
+  if (Array.isArray(call)) {
+    options.body = call.map(function(item) {
+      return {
+        id: self._id++,
+        method: item.method,
+        params: item.params
+      };
+    });
+  } else {
+    options.body = {
+      id: self._id++,
+      method: call.method,
+      params: call.params
+    };
+  }
+
+  return this.request(options, callback);
+};
+
+Client.prototype.request = function(options, callback) {
+  var self = this
+    , path = options.path || '/'
+    , body = options.body || {}
+    , method = options.method || 'POST'
+    , cb = callback;
+
+  if (typeof callback !== 'function') {
+    callback = function() {};
+  }
+
+  options = {
+    method: method,
+    uri: (this.options.ssl ? 'https' : 'http')
+      + '://'
+      + this.options.user
+      + ':'
+      + this.options.pass
+      + '@'
+      + this.options.host
+      + ':'
+      + this.options.port
+      + path,
+    json: body
+  };
+
+  return request(options, function(err, res, body) {
+    if (err) {
+      return callback(new Error(err));
+    }
+
+    if (res.statusCode === 403 || res.statusCode === 401) {
+      return callback(new Error('Forbidden.'));
+    }
+
+    if (res.statusCode === 404) {
+      return callback(new Error('Not found.'));
+    }
+
+    try {
+      if (typeof body === 'string') {
+        body = JSON.parse(body);
+      }
+    } catch (e) {
+      e.message += '\nStatus code: ' + res.statusCode + '.';
+      e.message += '\nJSON: ' + body;
+      return callback(e);
+    }
+
+    if (!body) {
+      return callback(new Error('No body.'));
+    }
+
+    if (body.error) {
+      return callback(null, new Error(body.error));
+    }
+
+    return callback(null, body.result);
+  });
+};
 
 /**
  * Helpers
@@ -1032,6 +1132,98 @@ function asort(obj) {
 
     return a > b ? 1 : (a < b ? -1 : 0);
   });
+}
+
+var http = require('http');
+var StringDecoder = require('string_decoder').StringDecoder;
+
+function request(options, callback) {
+  if (typeof options === 'string' || options.hostname) {
+    options = { uri: options };
+  }
+
+  var uri = options.uri || options.url
+    , body = options.json
+        ? JSON.stringify(options.json)
+        : options.body || '';
+
+  if (typeof uri !== 'object') {
+    uri = url.parse(uri);
+  }
+
+  if (options.qs) {
+    var query = uri.query ? qs.parse(uri.query) : {};
+    Object.keys(options.qs).forEach(function(key) {
+      query[key] = options.qs[key];
+    });
+    uri.path = uri.pathname + '?' + qs.stringify(query);
+  }
+
+  var protocol = uri.prototype === 'https:'
+    ? require('https')
+    : http;
+
+  options.method = options.method || (body ? 'POST' : 'GET');
+  options.method = options.method.toUpperCase();
+  options.headers = options.headers || {};
+
+  if (options.json) {
+    options.headers['Content-Type'] = 'application/json; charset=utf-8';
+    options.headers['Accept'] = 'application/json';
+  }
+
+  if (options.method !== 'GET' && options.method !== 'HEAD') {
+    options.headers['Content-Length'] = Buffer.byteLength(body);
+  }
+
+  var opt = {
+    auth: uri.auth,
+    host: uri.hostname,
+    port: uri.port || (protocol === http ? 80 : 443),
+    path: uri.path,
+    method: options.method,
+    headers: options.headers
+  };
+
+  var req = protocol.request(opt);
+
+  req.on('response', function(res) {
+    var decoder = new StringDecoder('utf8')
+      , done = false
+      , body = '';
+
+    function end() {
+      if (done) return;
+      done = true;
+      res.body = body;
+      if (options.json) {
+        try {
+          body = JSON.parse(body);
+        } catch (e) {
+          ;
+        }
+      }
+      callback(null, res, body);
+      res.socket.removeListener('end', end);
+    }
+
+    res.on('data', function(data) {
+      body += decoder.write(data);
+    });
+
+    res.on('error', function(err) {
+      res.destroy();
+      callback(err);
+    });
+
+    res.on('end', end);
+
+    // An agent socket's `end` sometimes
+    // wont be emitted on the response.
+    res.socket.on('end', end);
+  });
+
+  req.end(body);
 }
 
 /**

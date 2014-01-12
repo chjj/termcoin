@@ -14,7 +14,6 @@
   "tags": ["bitcoin", "tui"],
   "scripts": { "test": "node test" },
   "dependencies": {
-    "blessed": ">= 0.0.27",
-    "bitcoin": ">= 2.0.1"
+    "blessed": ">= 0.0.27"
   }
 }
