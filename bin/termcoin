@@ -27,6 +27,8 @@ var fs = require('fs')
   , config
   , opt;
 
+var now = Date.now();
+
 var platform
   , client;
 
@@ -41,19 +43,19 @@ var coins = {
     name: 'litecoin',
     daemon: 'litecoind',
     config: process.env.HOME + '/.litecoin/litecoin.conf',
-    wallet: process.env.HOME + '/.bitcoin/wallet.dat'
+    wallet: process.env.HOME + '/.litecoin/wallet.dat'
   },
   dogecoin: {
     name: 'dogecoin',
     daemon: 'dogecoind',
     config: process.env.HOME + '/.dogecoin/dogecoin.conf',
-    wallet: process.env.HOME + '/.bitcoin/wallet.dat'
+    wallet: process.env.HOME + '/.dogecoin/wallet.dat'
   },
   namecoin: {
     name: 'namecoin',
     daemon: 'namecoind',
     config: process.env.HOME + '/.namecoin/namecoin.conf',
-    wallet: process.env.HOME + '/.bitcoin/wallet.dat'
+    wallet: process.env.HOME + '/.namecoin/wallet.dat'
   }
 };
 
@@ -89,18 +91,20 @@ function getStats(callback) {
         return getAddresses(accounts, function(err, addresses) {
           if (err) return callback(err);
 
-          for (var i = 0; i < 10; i++) {
-            transactions.push({
-              txid: i + 1000,
-              time: Date.now() / 1000 | 0,
-              category: 'send',
-              amount: 2.23,
-              fee: 0.005,
-              confirmations: 23,
-              otheraccount: '1PGFqEzfmQch1gKD3ra4k18PNj3tTUUSqg',
-              message: 'hello',
-              to: 'hello'
-            });
+          if (opt.mock && !transactions.length) {
+            for (var i = 0; i < 10; i++) {
+              transactions.push({
+                txid: i + 1000,
+                time: now / 1000 | 0,
+                category: 'send',
+                amount: 2.23,
+                fee: 0.005,
+                confirmations: 23,
+                otheraccount: '1PGFqEzfmQch1gKD3ra4k18PNj3tTUUSqg',
+                message: 'hello',
+                to: 'hello'
+              });
+            }
           }
 
           return callback(null, {
@@ -146,7 +150,9 @@ function getAddresses(accounts, callback) {
   }, function() {
     if (accounts) {
       // Exclude the user's addresses.
-      var add = Object.keys(accounts);
+      var add = Object.keys(accounts).map(function(key) {
+        return accounts[key].address;
+      });
       results = results.filter(function(item) {
         return add.indexOf(item.address) === -1;
       });
@@ -687,7 +693,7 @@ function start(stats, callback) {
     function getTransaction(id, callback) {
       return callback(null, {
         txid: id,
-        time: Date.now() / 1000 | 0,
+        time: now / 1000 | 0,
         category: 'send',
         amount: 2.23,
         fee: 0.005,
@@ -874,9 +880,8 @@ function start(stats, callback) {
 
   screen.key(['C-c', 'q'], function() {
     if (!opt.host) {
-      client.stop(function() {
-        return callback();
-      });
+      //client.stop(function() {
+      return callback();
       return;
     }
     return callback();
@@ -921,14 +926,13 @@ function parseArg(argv) {
   while (argv.length) {
     arg = getarg();
     switch (arg) {
-      case '-h':
-      case '--currency':
       case '-c':
+      case '--currency':
         platform = coins[argv.shift()];
         if (!platform) throw new Error('Unrecognized currency.');
         break;
-      case '--server':
       case '-s':
+      case '--server':
         options.server = url.parse(argv.shift());
         if (options.server.auth) {
           var parts = options.server.auth.split(':');
@@ -941,6 +945,7 @@ function parseArg(argv) {
         options.password = options.server.password;
         options.ssl = options.server.protocol === 'https:';
         break;
+      case '-h':
       case '--help':
         return help();
       case '--debug':
