@@ -7,6 +7,7 @@
  */
 
 // bitcoind -server -daemon -rpcuser=bitcoinrpc -rpcpassword=foobar -rpcport=8332 -rpcallowip=127.0.0.1
+// termcoin http://bitcoinrpc:foobar@localhost:8332/
 // https://github.com/bitcoin/bitcoin/blob/master/src/rpcserver.cpp
 // https://github.com/bitcoin/bitcoin/blob/master/src/rpcrawtransaction.cpp
 // https://github.com/bitcoin/bitcoin/blob/master/src/rpcwallet.cpp
@@ -79,7 +80,7 @@ function readConf() {
 }
 
 function getStats(callback) {
-  return getTotalBalance(function(err, balance) {
+  return getTotalBalance(function(err, balances) {
     if (err) return callback(err);
     return getAccounts(function(err, accounts) {
       if (err) return callback(err);
@@ -103,7 +104,7 @@ function getStats(callback) {
           }
 
           return callback(null, {
-            balance: balance,
+            balances: balances,
             accounts: accounts,
             transactions: transactions,
             addresses: addresses
@@ -196,7 +197,17 @@ function getTransactions(callback) {
 }
 
 function getTotalBalance(callback) {
-  return client.getBalance('*', 6, callback);
+  return client.getBalance('*', 6, function(err, balance) {
+    if (err) return callback(err);
+    return client.getBalance('*', 0, function(err, unconfirmed) {
+      if (err) return callback(err);
+      unconfirmed -= balance;
+      return callback(null, {
+        balance: balance,
+        unconfirmed: unconfirmed
+      });
+    });
+  });
 }
 
 function createAddress(name, callback) {
@@ -204,7 +215,8 @@ function createAddress(name, callback) {
 }
 
 function send(address, amount, comment, commentTo, callback) {
-  return client.sendToAddress(address, amount, comment, commentTo, callback);
+  //return client.sendToAddress(address, amount, comment, commentTo, callback);
+  return client.sendToAddress(address, amount, callback);
 }
 
 function move(from, to, amount, callback) {
@@ -212,6 +224,7 @@ function move(from, to, amount, callback) {
 }
 
 function startServer(callback) {
+  return callback();
   if (opt.host) return callback();
   console.log('Stopping existing server.');
   return cp.execFile(platform.daemon, ['stop'], function(err) {
@@ -494,14 +507,14 @@ function start(stats, callback) {
     }
   });
 
-  tabs.send._.amount = blessed.button({
+  tabs.send._.submit = blessed.button({
     parent: tabs.send._.form,
     name: 'submit',
     top: 6,
     right: 1,
     height: 1,
     width: 'shrink',
-    content: 'Send',
+    content: ' Send ',
     style: {
       bg: 'black',
       focus: {
@@ -513,6 +526,10 @@ function start(stats, callback) {
     }
   });
 
+  tabs.send._.submit.on('press', function() {
+    tabs.send._.form.submit();
+  });
+
   tabs.send._.form.on('submit', function(data) {
     var alias = stats.addresses.reduce(function(out, item) {
       out[item.name] = item;
@@ -522,7 +539,8 @@ function start(stats, callback) {
       data.address = alias[data.address].address;
     }
     send(data.address, +data.amount, '', '', function(err) {
-      ;
+      if (err) return msg.error(err.message);
+      msg.display('Transaction completed successfully.');
     });
   });
 
@@ -579,19 +597,23 @@ function start(stats, callback) {
     var parts = el.getText().trim().split(/\s+/)
       , label = parts[0]
       , address = parts[1]
-      , msg;
+      , text;
 
     if (label === 'new') {
-      msg = 'Label for new address:';
-      return tabs.receive._.prompt.type(msg, '', function(err, value) {
-        // TODO: Create address
-        screen.render();
-        refresh();
+      text = 'Label for new address:';
+      return tabs.receive._.prompt.type(text, '', function(err, value) {
+        if (err) return msg.error(err.message);
+        return createAddress(value, function(err, address) {
+          text = 'Created address: {blue-fg}' + address + '{/blue-fg}';
+          msg.display(text);
+          screen.render();
+          refresh();
+        });
       });
     }
 
-    msg = 'Label for {blue-fg}' + address + '{/blue-fg}:';
-    return tabs.receive._.prompt.type(msg, '', function(err, value) {
+    text = 'Label for {blue-fg}' + address + '{/blue-fg}:';
+    return tabs.receive._.prompt.type(text, '', function(err, value) {
       // TODO: Rename address
       screen.render();
       refresh();
@@ -683,11 +705,8 @@ function start(stats, callback) {
     }
     return getTransaction(parts[0], function(err, transaction) {
       if (err) return;
-      //var text = JSON.stringify(transaction, null, 2);
       var text = inspect(transaction);
-      tabs.transactions._.msg.display(text, -1, function() {
-        ;
-      });
+      tabs.transactions._.msg.display(text, -1);
     });
   });
 
@@ -757,6 +776,26 @@ function start(stats, callback) {
     border: 'line'
   });
 
+  /**
+   * Message
+   */
+
+  var msg = blessed.message({
+    parent: screen,
+    top: 'center',
+    left: 'center',
+    // XXX Fix in blessed:
+    //height: '50%',
+    height: 'shrink',
+    width: '50%',
+    align: 'center',
+    tags: true,
+    hidden: true,
+    border: 'line'
+  });
+
+  msg.display('Welcome.');
+
   function refresh(callback, noLoad) {
     if (!noLoad) loader.load('Loading...');
     return getStats(function(err, stats) {
@@ -770,11 +809,16 @@ function start(stats, callback) {
       // Wallet
       tabs.overview._.wallet.setContent(
         '{blue-fg}Balance{blue-fg}: {yellow-fg}'
-        + stats.balance + '{/yellow-fg}');
+        + stats.balances.balance.toFixed(2) + '{/yellow-fg}\n'
+        + '{red-fg}Unconfirmed{red-fg}: {yellow-fg}'
+        + stats.balances.unconfirmed.toFixed(2) + '{/red-fg}');
 
       // Accounts
-      items = Object.keys(stats.accounts).reduce(function(out, key) {
-        var account = stats.accounts[key];
+      var accounts = Object.keys(stats.accounts).map(function(key) {
+        return stats.accounts[key];
+      });
+      accounts = asort(accounts);
+      items = accounts.reduce(function(out, account) {
         var w = screen.width;
         var name = account.name || '[none]';
         var sp = Array(w - (account.address.length + name.length) + 1).join(' ');
@@ -806,7 +850,8 @@ function start(stats, callback) {
       tabs.overview._.transactions.setContent(items.slice(0, 3).join('\n'));
 
       // Addresses
-      items = stats.addresses.reduce(function(out, account) {
+      var addresses = asort(stats.addresses);
+      items = addresses.reduce(function(out, account) {
         var w = screen.width;
         var name = account.name || '[none]';
         var sp = Array(w - (account.address.length + name.length) + 1).join(' ');
@@ -967,11 +1012,27 @@ function main(argv, callback) {
  * Helpers
  */
 
-
 function inspect(obj) {
   return typeof obj !== 'string'
     ? util.inspect(obj, false, 6, true)
     : obj;
+}
+
+function asort(obj) {
+  return obj.sort(function(a, b) {
+    a = a.name.toLowerCase();
+    b = b.name.toLowerCase();
+
+    if (a[0] === '.' && b[0] === '.') {
+      a = a[1];
+      b = b[1];
+    } else {
+      a = a[0];
+      b = b[0];
+    }
+
+    return a > b ? 1 : (a < b ? -1 : 0);
+  });
 }
 
 /**
