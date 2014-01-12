@@ -247,7 +247,8 @@ function startServer(callback) {
 
 function start(stats, callback) {
   var screen = blessed.screen({
-    autoPadding: true
+    autoPadding: true,
+    smartCSR: true
   });
 
   var target;
@@ -400,17 +401,16 @@ function start(stats, callback) {
     tabs.send._.form.focus();
   });
 
-  tabs.send._.form = blessed.form({
+  tabs.send._.form = blessed.box({
     parent: tabs.send,
     top: 0,
     left: 1,
     right: 1,
-    height: 9,
+    //height: 9,
+    // Fixed in blessed:
+    height: 'shrink',
     keys: true,
     mouse: true,
-    // XXX Fix this in blessed:
-    //height: 'shrink',
-    //width: 'shrink',
     label: ' {blue-fg}Send{/blue-fg} ',
     border: 'line',
     tags: true
@@ -653,16 +653,17 @@ function start(stats, callback) {
   tabs.transactions._.msg = blessed.message({
     parent: tabs.transactions,
 
-    // XXX Fix in blessed: - not centered
-    //top: 'center',
-    //left: 'center',
-    //height: 'shrink',
-    //width: 'shrink',
+    // Fixed in blessed.
+    top: 'center',
+    left: 'center',
+    height: 'shrink',
+    width: 'shrink',
 
-    top: 2,
-    left: 4,
-    right: 4,
-    bottom: 2,
+    //top: 2,
+    //left: 4,
+    //right: 4,
+    //bottom: 2,
+
     scrollable: true,
     alwaysScroll: true,
     keys: true,
@@ -777,8 +778,8 @@ function start(stats, callback) {
     parent: screen,
     top: 'center',
     left: 'center',
-    // XXX Fix in blessed:
-    //height: '50%',
+    // Fixed in blessed:
+    // height: '50%',
     height: 'shrink',
     width: '50%',
     align: 'center',
