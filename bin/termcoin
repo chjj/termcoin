@@ -198,13 +198,36 @@ function getAccounts(callback) {
 }
 
 function getProgress(callback) {
-  return client.call('getblockcount', function(err, blocks) {
+  return client.call('getblockhash', [0], function(err, hash) {
     if (err) return callback(err);
-    return client.call('getconnectioncount', function(err, connections) {
+    return client.call('getblock', [hash], function(err, genesis) {
       if (err) return callback(err);
-      return callback(null, {
-        blocks: blocks,
-        connections: connections
+      return client.call('getconnectioncount', function(err, connections) {
+        if (err) return callback(err);
+        return client.call('getblockcount', function(err, count) {
+          if (err) return callback(err);
+          return client.call('getblockhash', [count], function(err, hash) {
+            if (err) return callback(err);
+            return client.call('getblock', [hash], function(err, current) {
+              if (err) return callback(err);
+
+              var beginning = genesis.time
+                , end = Date.now() / 1000 | 0
+                , left = end - current.time
+                , perc = ((current.time - beginning) / (end - beginning)) * 100 | 0;
+
+              return callback(null, {
+                blocks: count,
+                connections: connections,
+                genesisBlock: genesis,
+                currentBlock: current,
+                hoursBehind: left / 60 / 60 | 0,
+                daysBehind: left / 60 / 60 / 24 | 0,
+                percent: perc
+              });
+            });
+          });
+        });
       });
     });
   });
@@ -482,9 +505,9 @@ function start(stats, callback) {
     parent: tabs.overview,
     bottom: 0,
     left: 3,
-    // XXX Fix in blessed:
+    // XXX Fix in blessed: - probably has something to do with bottom: 0
     // height: 'shrink',
-    height: 4,
+    height: 6,
     width: '40%',
     label: ' {blue-fg}Data{/blue-fg} ',
     tags: true,
@@ -500,7 +523,7 @@ function start(stats, callback) {
 
   tabs.overview._.bar = blessed.progressbar({
     parent: tabs.overview._.data,
-    top: 1,
+    top: 3,
     left: 0,
     right: 0,
     height: 'shrink',
@@ -508,7 +531,7 @@ function start(stats, callback) {
     filled: 0,
     ch: '|',
     tags: true,
-    content: 'Syncing... ',
+    //content: 'Syncing... ',
     style: {
       fg: 'lightblack',
       bar: {
@@ -520,12 +543,17 @@ function start(stats, callback) {
   (function self() {
     return getProgress(function(err, data) {
       if (data) {
-        //tabs.overview._.bar.progress(1);
-        tabs.overview._.data.setContent('Connections: ' + data.connections);
-        tabs.overview._.bar.content = 'Blocks: ' + data.blocks + ' ';
+        tabs.overview._.data.setContent(
+          'Connections: ' + data.connections + '\n'
+          + 'Blocks: ' + data.blocks + ' (' + data.percent + '%)\n'
+          + (data.daysBehind >= 1
+          ? data.daysBehind + ' Days Behind'
+          : data.hoursBehind + ' Hours Behind'));
+        //tabs.overview._.bar.content = data.blocks + ' (' + data.percent + '%)';
+        tabs.overview._.bar.setProgress(data.percent);
         screen.render();
       }
-      setTimeout(self, 1000);
+      setTimeout(self, 2000);
     });
   })();
 
@@ -603,7 +631,8 @@ function start(stats, callback) {
     mouse: true,
     label: ' {blue-fg}Send{/blue-fg} ',
     border: 'line',
-    tags: true
+    tags: true,
+    autoNext: true
   });
 
   tabs.send._.ttext = blessed.text({
@@ -778,14 +807,27 @@ function start(stats, callback) {
     return screen._.picker.pick(callback);
   }
 
-  tabs.send._.address.key('C-e', function() {
+  function _pick() {
     return pickAddress(function(err, value) {
       if (err) return screen.render();
       tabs.send._.address.setValue(value);
       tabs.send._.address.focus();
       screen.render();
     });
+  }
+
+  tabs.send._.form.key(['C-e', 'C-t', 'e', 't'], function() {
+    tabs.send._.form._selected = tabs.send._.address;
+    //tabs.send._.address.focus();
+    _pick();
   });
+  tabs.send._.form.key(['L', 'l'], function() {
+    tabs.send._.label.focus();
+  });
+  tabs.send._.form.key('m', function() {
+    tabs.send._.amount.focus();
+  });
+  tabs.send._.address.key(['C-e','C-t'], _pick);
 
   /**
    * Receive
