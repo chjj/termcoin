@@ -96,11 +96,6 @@ function getStats(callback) {
           if (err) return callback(err);
           return getInfo(function(err, info) {
             if (err) return callback(err);
-
-            if (opt.mock && !transactions.length) {
-              transactions = mock.transactions.slice();
-            }
-
             return callback(null, {
               balances: balances,
               accounts: accounts,
@@ -211,7 +206,13 @@ function getInfo(callback) {
 }
 
 function getTransactions(callback) {
-  return client.call('listtransactions', ['*', 1000], callback);
+  if (opt.mock) {
+    return callback(null, tsort(mock.transactions, true));
+  }
+  return client.call('listtransactions', ['*', 1000], function(err, transactions) {
+    if (err) return callback(err);
+    return callback(null, tsort(transactions, true));
+  });
 }
 
 function getTotalBalance(callback) {
@@ -1576,6 +1577,14 @@ function asort(obj) {
     }
 
     return a > b ? 1 : (a < b ? -1 : 0);
+  });
+}
+
+function tsort(obj, desc) {
+  return obj.sort(function(a, b) {
+    return desc
+      ? b.time - a.time
+      : a.time - b.time;
   });
 }
 
