@@ -36,25 +36,29 @@ var coins = {
     name: 'bitcoin',
     daemon: 'bitcoind',
     config: process.env.HOME + '/.bitcoin/bitcoin.conf',
-    wallet: process.env.HOME + '/.bitcoin/wallet.dat'
+    wallet: process.env.HOME + '/.bitcoin/wallet.dat',
+    log: process.env.HOME + '/.bitcoin/debug.log'
   },
   litecoin: {
     name: 'litecoin',
     daemon: 'litecoind',
     config: process.env.HOME + '/.litecoin/litecoin.conf',
-    wallet: process.env.HOME + '/.litecoin/wallet.dat'
+    wallet: process.env.HOME + '/.litecoin/wallet.dat',
+    log: process.env.HOME + '/.litecoin/debug.log'
   },
   dogecoin: {
     name: 'dogecoin',
     daemon: 'dogecoind',
     config: process.env.HOME + '/.dogecoin/dogecoin.conf',
-    wallet: process.env.HOME + '/.dogecoin/wallet.dat'
+    wallet: process.env.HOME + '/.dogecoin/wallet.dat',
+    log: process.env.HOME + '/.dogecoin/debug.log'
   },
   namecoin: {
     name: 'namecoin',
     daemon: 'namecoind',
     config: process.env.HOME + '/.namecoin/namecoin.conf',
-    wallet: process.env.HOME + '/.namecoin/wallet.dat'
+    wallet: process.env.HOME + '/.namecoin/wallet.dat',
+    log: process.env.HOME + '/.namecoin/debug.log'
   }
 };
 
@@ -278,7 +282,7 @@ function startServer(callback) {
 function start(stats, callback) {
   var screen = blessed.screen({
     autoPadding: true,
-    smartCSR: true
+    fastCSR: true
   });
 
   var target;
@@ -322,6 +326,7 @@ function start(stats, callback) {
    'transactions',
    'addresses',
    'miner',
+   'logs',
    'debug'].forEach(function(name) {
     var tab = tabs[name] = blessed.box({
       top: 2,
@@ -971,6 +976,8 @@ function start(stats, callback) {
   });
 
   tabs.addresses._.list.key('d', function() {
+    return msg.error('Not supported.');
+
     var list = tabs.addresses._.list
       , el = list.items[list.selected];
 
@@ -981,7 +988,9 @@ function start(stats, callback) {
     tabs.addresses._.question.ask('Are you sure you want to delete this?', function(err, value) {
       if (err) return msg.error(err.message);
       if (!value) return screen.render();
-      return client.call('setaccount', [address], function(err) {
+      // NOTE: This won't work since the rpc server doesn't expose the send addresses.
+      //return client.call('setaccount', [address], function(err) {
+      return client.call('setaddresspageaccount', [address], function(err) {
         if (err) return msg.error(err.message);
         text = 'Deleted address: {blue-fg}' + address + '{/blue-fg}';
         msg.display(text);
@@ -992,6 +1001,8 @@ function start(stats, callback) {
   });
 
   tabs.addresses._.list.on('select', function(el, index) {
+    return msg.error('Not supported.');
+
     var parts = el.getText().trim().split(/\s+/)
       , label = parts[0]
       , address = parts[1]
@@ -1006,7 +1017,9 @@ function start(stats, callback) {
         return tabs.addresses._.prompt.type(text, '', function(err, address) {
           if (err) return msg.error(err.message);
           if (!address) return;
-          return client.call('setaccount', [address, label], function(err) {
+          // NOTE: This won't work since the rpc server doesn't expose the send addresses.
+          //return client.call('setaccount', [address, label], function(err) {
+          return client.call('setaddresspageaccount', [address], function(err) {
             if (err) return msg.error(err.message);
             text = 'Created address: {blue-fg}' + label + '{/blue-fg}';
             msg.display(text);
@@ -1029,6 +1042,22 @@ function start(stats, callback) {
         refresh();
       });
     });
+  });
+
+  /**
+   * Logs
+   */
+
+  tabs.logs.on('focus', function() {
+    if (tabs.logs._.tail) return;
+    tabs.logs._.tail = tailBox(platform.log, tabs.logs);
+  });
+
+  tabs.logs.on('blur', function() {
+    if (tabs.logs._.tail) {
+      tabs.logs._.tail();
+      delete tabs.logs._.tail;
+    }
   });
 
   /**
@@ -1179,6 +1208,98 @@ function start(stats, callback) {
   });
 
   screen.render();
+}
+
+// `tail -f` a file.
+function tailf(file) {
+  //try {
+  //  var stat = fs.statSync(file);
+  //} catch (e) {
+  //  var s = new (require('stream')).Stream;
+  //  process.nextTick(function() { s.emit('error', e); });
+  //  return s;
+  //}
+  //var options = { encoding: 'utf8', start: Math.max(0, stat.size - 2048) }
+
+  var options = { encoding: 'utf8' }
+    , stream = fs.createReadStream(file, options)
+    , Stream = require('stream').Stream
+    , s = new Stream
+    , buff = '';
+
+  var resume = function() {
+    return setTimeout(function() {
+      stream.resume();
+    }, 1000);
+  };
+
+  var destroy = stream.destroy.bind(stream);
+
+  s.readable = true;
+  s.destroy = function() {
+    destroy();
+    s.emit('end');
+    s.emit('close');
+  };
+
+  stream.destroy = function() {};
+
+  stream.once('end', function() {
+    stream.on('data', function(data) {
+      s.emit('data', data);
+
+      var data = (buff + data).split(/\n+/)
+        , l = data.length - 1
+        , i = 0;
+
+      for (; i < l; i++) {
+        s.emit('line', data[i]);
+      }
+
+      buff = data[l];
+    });
+
+    stream.on('error', function(err) {
+      s.emit('error', err);
+      s.destroy();
+    });
+
+    stream.on('end', function() {
+      if (buff) {
+        stream.emit('line', buff);
+        buff = '';
+      }
+
+      resume();
+    });
+
+    resume();
+  });
+
+  return s;
+};
+
+function tailBox(file, box) {
+  var stream = tailf(file)
+    , rendering;
+
+  stream.on('line', function(line) {
+    box.pushLine(line);
+    if (box._clines.fake.length > 100) {
+      //box.setContent('');
+      box.shiftLine(50);
+    }
+    //box.setScroll(box.getScrollHeight());
+    box.setScroll(box._clines.length);
+    if (rendering) return;
+    rendering = true;
+    process.nextTick(function() {
+      rendering = false;
+      box.screen.render();
+    });
+  });
+
+  return stream.destroy.bind(stream);
 }
 
 function parseArg(argv) {
