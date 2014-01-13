@@ -23,6 +23,7 @@ var fs = require('fs')
   , blessed = require('blessed')
   , path = require('path')
   , cp = require('child_process')
+  , mock = require('../lib/mock')
   , config
   , opt;
 
@@ -97,19 +98,7 @@ function getStats(callback) {
             if (err) return callback(err);
 
             if (opt.mock && !transactions.length) {
-              for (var i = 0; i < 10; i++) {
-                transactions.push({
-                  txid: i + 1000,
-                  time: now / 1000 | 0,
-                  category: 'send',
-                  amount: 2.23,
-                  fee: 0.005,
-                  confirmations: 23,
-                  otheraccount: '1PGFqEzfmQch1gKD3ra4k18PNj3tTUUSqg',
-                  message: 'hello',
-                  to: 'hello'
-                });
-              }
+              transactions = mock.transactions.slice();
             }
 
             return callback(null, {
@@ -889,17 +878,7 @@ function start(stats, callback) {
 
     var getTransaction = function(id, callback) {
       if (opt.mock) {
-        return callback(null, {
-          txid: id,
-          time: now / 1000 | 0,
-          category: 'send',
-          amount: 2.23,
-          fee: 0.005,
-          confirmations: 23,
-          otheraccount: '1PGFqEzfmQch1gKD3ra4k18PNj3tTUUSqg',
-          message: 'hello',
-          to: 'hello'
-        });
+        return callback(null, mock.transaction);
       }
       return client.call('gettransaction', [id], callback);
     };
@@ -1151,17 +1130,41 @@ function start(stats, callback) {
 
       // Transactions
       items = stats.transactions.reduce(function(out, t) {
-        // ID | Date | Type | Address | Amount
-        var s = t.txid
-          + ' | '
-          + '{black-fg}' + new Date(t.time * 1000).toISOString() + '{/black-fg}'
-          + ' | '
-          + '{blue-fg}' + t.category + '{/blue-fg}'
-          + ' | '
-          + '{green-fg}' + (t.otheraccount || t.address || t.account) + '{/green-fg}'
-          + ' | '
-          + '{yellow-fg}' + t.amount + '{/yellow-fg}'
-          + (t.fee ? '({red-fg}-' + t.fee + '{/red-fg})' : '');
+        var s;
+        if (t.category === 'move') {
+          // ID | Date | Type | Address | Amount
+          s = '[move]'
+            + ' | '
+            + '{black-fg}' + new Date(t.time * 1000).toISOString() + '{/black-fg}'
+            + ' | '
+            + '{blue-fg}<->{/blue-fg}'
+            + ' | '
+            + '{green-fg}' + t.account + '{/green-fg}'
+            + ' -> '
+            + '{green-fg}' + t.otheraccount + '{/green-fg}'
+            + ' | '
+            + '{yellow-fg}' + t.amount + '{/yellow-fg}'
+            + (t.comment ? ' - "' + t.comment + '"' : '');
+        } else {
+          // ID | Date | Type | Address | Amount-Fee | Confirmation
+          s = t.txid.substring(0, 6)
+            + ' | '
+            + '{black-fg}' + new Date(t.time * 1000).toISOString() + '{/black-fg}'
+            + ' | '
+            //+ '{blue-fg}' + t.category + '{/blue-fg}'
+            + (t.category === 'send'
+              ? '{red-fg}->{/red-fg}'
+              : '{green-fg}<-{/green-fg}')
+            + ' | '
+            + '{green-fg}' + t.address + '{/green-fg}'
+            + ' | '
+            + '{yellow-fg}' + t.amount + '{/yellow-fg}'
+            + (t.fee ? '({red-fg}-' + t.fee + '{/red-fg})' : '')
+            + ' | '
+            + (t.confirmations < 3
+              ? '{red-fg}Unconfirmed (' + t.confirmations + '){/red-fg}'
+              : '{green-fg}Confirmed (' + t.confirmations + '){/green-fg}');
+        }
         out.push(s);
         return out;
       }, []);
@@ -1285,19 +1288,42 @@ function tailBox(file, box) {
 
   stream.on('line', function(line) {
     box.pushLine(line);
-    if (box._clines.fake.length > 100) {
+    if (box._clines.fake.length > 200) {
       //box.setContent('');
-      box.shiftLine(50);
+      box.shiftLine(100);
     }
-    //box.setScroll(box.getScrollHeight());
-    box.setScroll(box._clines.length);
     if (rendering) return;
     rendering = true;
     process.nextTick(function() {
       rendering = false;
+      //box.setScroll(box.getScrollHeight());
+      box.setScroll(box._clines.length);
       box.screen.render();
     });
   });
+
+/*
+  var lines = [];
+  stream.on('line', function(line) {
+    var h = box.height;
+    if (lines.length >= h) {
+      while (lines.length > h) {
+        lines.shift();
+      }
+      box.setContent(lines.join('\n'));
+      lines = [];
+    }
+    lines.push(line);
+    if (rendering) return;
+    rendering = true;
+    process.nextTick(function() {
+      rendering = false;
+      //box.setScroll(box.getScrollHeight());
+      box.setScroll(box._clines.length);
+      box.screen.render();
+    });
+  });
+*/
 
   return stream.destroy.bind(stream);
 }
