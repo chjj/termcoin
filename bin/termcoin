@@ -27,7 +27,8 @@ var fs = require('fs')
   , config
   , opt;
 
-var now = Date.now();
+var now = Date.now()
+  , decryptTime = 0;
 
 var platform
   , client;
@@ -38,28 +39,32 @@ var coins = {
     daemon: 'bitcoind',
     config: process.env.HOME + '/.bitcoin/bitcoin.conf',
     wallet: process.env.HOME + '/.bitcoin/wallet.dat',
-    log: process.env.HOME + '/.bitcoin/debug.log'
+    log: process.env.HOME + '/.bitcoin/debug.log',
+    pid: process.env.HOME + '/.bitcoin/bitcoind.pid'
   },
   litecoin: {
     name: 'litecoin',
     daemon: 'litecoind',
     config: process.env.HOME + '/.litecoin/litecoin.conf',
     wallet: process.env.HOME + '/.litecoin/wallet.dat',
-    log: process.env.HOME + '/.litecoin/debug.log'
+    log: process.env.HOME + '/.litecoin/debug.log',
+    pid: process.env.HOME + '/.bitcoin/litecoind.pid'
   },
   dogecoin: {
     name: 'dogecoin',
     daemon: 'dogecoind',
     config: process.env.HOME + '/.dogecoin/dogecoin.conf',
     wallet: process.env.HOME + '/.dogecoin/wallet.dat',
-    log: process.env.HOME + '/.dogecoin/debug.log'
+    log: process.env.HOME + '/.dogecoin/debug.log',
+    pid: process.env.HOME + '/.bitcoin/dogecoind.pid'
   },
   namecoin: {
     name: 'namecoin',
     daemon: 'namecoind',
     config: process.env.HOME + '/.namecoin/namecoin.conf',
     wallet: process.env.HOME + '/.namecoin/wallet.dat',
-    log: process.env.HOME + '/.namecoin/debug.log'
+    log: process.env.HOME + '/.namecoin/debug.log',
+    pid: process.env.HOME + '/.bitcoin/namecoind.pid'
   }
 };
 
@@ -96,12 +101,16 @@ function getStats(callback) {
           if (err) return callback(err);
           return getInfo(function(err, info) {
             if (err) return callback(err);
-            return callback(null, {
-              balances: balances,
-              accounts: accounts,
-              transactions: transactions,
-              addresses: addresses,
-              info: info
+            return isEncrypted(function(err, encrypted) {
+              if (err) return callback(err);
+              return callback(null, {
+                balances: balances,
+                accounts: accounts,
+                transactions: transactions,
+                addresses: addresses,
+                info: info,
+                encrypted: encrypted
+              });
             });
           });
         });
@@ -229,14 +238,55 @@ function getTotalBalance(callback) {
   });
 }
 
+function signMessage(address, message, callback) {
+  return client.call('signmessage', [address, message], callback);
+}
+
+function verifyMessage(address, sig, message, callback) {
+  return client.call('verifymessage', [address, sig, message], callback);
+}
+
 function createAddress(name, callback) {
   //return client.call('setaccount', [address, value], function(err) {
   //return client.call('getaccountaddress', [name], callback);
   return client.call('getnewaddress', [name], callback);
 }
 
+function listReceivedByAddress(address, callback) {
+  if (opt.mock) return callback(null, received);
+  return client.call('listreceivedbyaddress', [address, sig, message], callback);
+}
+
 function backupWallet(path, callback) {
   return client.call('backupwallet', [path], callback);
+}
+
+function encryptWallet(passphrase, callback) {
+  return client.call('encryptwallet', [passphrase], callback);
+}
+
+function decryptWallet(passphrase, timeout, callback) {
+  return client.call('walletpassphrase', [passphrase, timeout], callback);
+}
+
+function decryptWallet(opassphrase, npassphrase, callback) {
+  return client.call('walletpassphrasechange', [opassphrase, npassphrase], callback);
+}
+
+function lockWallet(callback) {
+  return client.call('lockwallet', [], callback);
+}
+
+function isEncrypted(callback) {
+  return client.call('walletpassphrase', [], function(err) {
+    if (err) {
+      if (err.code === -15 && ~err.message.indexOf('unencrypted wallet')) {
+        return callback(null, false);
+      }
+      return callback(err);
+    }
+    return callback(null, true);
+  });
 }
 
 function send(address, amount, callback) {
@@ -247,7 +297,7 @@ function move(from, to, amount, callback) {
   return client.call('move', [from, to, amount], callback);
 }
 
-function startServer(callback) {
+function startServer_(callback) {
   return callback();
   if (opt.host) return callback();
   console.log('Stopping existing server.');
@@ -269,6 +319,40 @@ function startServer(callback) {
   });
 }
 
+function startServer(callback) {
+  if (opt.host) return callback();
+
+  try {
+    fs.statSync(platform.pid);
+    return callback();
+  } catch (e) {
+    ;
+  }
+
+  //console.log('Stopping existing server.');
+  //return cp.exec('(setsid ' + platform.daemon + ' stop > /dev/null 2>& 1 &)', function(err) {
+  //if (err) return callback(err);
+
+  console.log('Starting new server.');
+
+  var cmd = [
+    platform.daemon,
+    '-server',
+    '-daemon',
+    '-rpcuser=' + config.rpcuser,
+    '-rpcpassword=' + config.rpcpassword,
+    '-rpcport=' + config.rpcport,
+    '-rpcallowip=127.0.0.1'
+  ].join(' ');
+
+  return cp.exec('(setsid ' + cmd + ' > /dev/null 2>& 1 &)', function(err) {
+    if (err) return callback(err);
+    return setTimeout(function() {
+      return callback();
+    }, 12000);
+  });
+}
+
 function start(stats, callback) {
   var screen = blessed.screen({
     autoPadding: true,
@@ -277,8 +361,16 @@ function start(stats, callback) {
 
   var target;
 
-  var bar = blessed.listbar({
+  var wrapper = blessed.box({
     parent: screen,
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0
+  });
+
+  var bar = blessed.listbar({
+    parent: wrapper,
     top: 0,
     left: 0,
     right: 0,
@@ -301,7 +393,7 @@ function start(stats, callback) {
   });
 
   var sep = blessed.line({
-    parent: screen,
+    parent: wrapper,
     top: 1,
     left: 0,
     right: 0,
@@ -316,6 +408,7 @@ function start(stats, callback) {
    'transactions',
    'addresses',
    'miner',
+   'misc',
    'logs',
    'debug'].forEach(function(name) {
     var tab = tabs[name] = blessed.box({
@@ -341,7 +434,7 @@ function start(stats, callback) {
       text: name,
       callback: function() {
         if (target) target.detach();
-        screen.append(tab);
+        wrapper.append(tab);
         tab.focus();
         target = tab;
         screen.render();
@@ -459,14 +552,35 @@ function start(stats, callback) {
     }
   });
 
-  tabs.overview._.backup.on('press', function() {
-    // TODO: Add prompt for this.
-    // TODO: Add global prompt anyway.
-    backupWallet(process.env.HOME + '/wallet.dat.bak', function(err) {
-      if (err) return msg.error(err.messsage);
-      msg.display('Wallet successfully backed up.');
-      screen.render();
+  function backup() {
+    return screen._.prompt.type('Save to:', process.env.HOME, function(err, value) {
+      if (err) {
+        screen.render();
+        return screen._.msg.error(err.message);
+      }
+      if (value == null) {
+        screen.render();
+        return;
+      }
+      var stat;
+      try {
+        stat = fs.statSync(value);
+      } catch (e) {
+        ;
+      }
+      if (stat && stat.isDirectory()) {
+        value = value.replace(/\/+$/, '') + '/wallet.dat.bak';
+      }
+      return backupWallet(value, function(err) {
+        if (err) return screen._.msg.error(err.messsage);
+        screen._.msg.display('Wallet successfully backed up.');
+        screen.render();
+      });
     });
+  }
+
+  tabs.overview._.backup.on('press', function() {
+    backup();
   });
 
   /**
@@ -595,6 +709,16 @@ function start(stats, callback) {
     }
   });
 
+  tabs.send._.note = blessed.text({
+    parent: tabs.send._.form,
+    top: 6,
+    left: 0,
+    height: 'shrink',
+    right: 10,
+    content: 'Press {blue-fg}Ctrl-E{/blue-fg} to select an address.',
+    tags: true
+  });
+
   tabs.send._.submit.on('press', function() {
     tabs.send._.form.submit();
   });
@@ -625,46 +749,19 @@ function start(stats, callback) {
     }
     */
 
-    send(data.address, +data.amount, function(err, result) {
-      if (err) return msg.error(err.message);
-      if (!result || !Object.keys(result).length) {
-        return msg.error('Transaction not completed.');
-      }
-      msg.display('Transaction completed successfully: ' + result.txid + '.');
+    return checkEncrypt(function(err) {
+      if (err) return screen._.msg.error(err.message);
+      return send(data.address, +data.amount, function(err, result) {
+        if (err) return screen._.msg.error(err.message);
+        if (!result || !Object.keys(result).length) {
+          return screen._.msg.error('Transaction not completed.');
+        }
+        screen._.msg.display('Transaction completed successfully: ' + result.txid + '.');
+      });
     });
   });
 
-  tabs.send._.picker = blessed.list({
-    parent: tabs.send,
-    top: 'center',
-    left: 'center',
-    height: '50%',
-    width: '70%',
-    border: 'line',
-    keys: true,
-    vi: true,
-    mouse: true,
-    tags: true,
-    hidden: true,
-    style: {
-      scrollbar: {
-        inverse: true
-      },
-      selected: {
-        bg: 'blue'
-      },
-      item: {
-        hover: {
-          bg: 'blue'
-        }
-      }
-    },
-    scrollbar: {
-      ch: ' '
-    }
-  });
-
-  tabs.send._.address.key('C-e', function() {
+  function pickAddress(callback) {
     var addresses = stats.addresses.map(function(item) {
       return item.name || item.address;
     });
@@ -676,11 +773,16 @@ function start(stats, callback) {
     });
     addresses = addresses.concat(accounts);
 
-    tabs.send._.picker.setItems(addresses);
+    screen._.picker.setItems(addresses);
 
-    tabs.send._.picker.pick(function(err, value) {
-      if (err) return;
+    return screen._.picker.pick(callback);
+  }
+
+  tabs.send._.address.key('C-e', function() {
+    return pickAddress(function(err, value) {
+      if (err) return screen.render();
       tabs.send._.address.setValue(value);
+      tabs.send._.address.focus();
       screen.render();
     });
   });
@@ -721,34 +823,6 @@ function start(stats, callback) {
     }
   });
 
-  tabs.receive._.prompt = blessed.prompt({
-    parent: tabs.receive,
-    top: 'center',
-    left: 'center',
-    keys: true,
-    vi: true,
-    mouse: true,
-    tags: true,
-    content: 'Label:',
-    border: 'line',
-    hidden: true
-  });
-
-  tabs.receive._.question = blessed.question({
-    parent: tabs.receive,
-    top: 'center',
-    left: 'center',
-    width: 'shrink',
-    height: 'shrink',
-    keys: true,
-    vi: true,
-    mouse: true,
-    tags: true,
-    content: 'Label:',
-    border: 'line',
-    hidden: true
-  });
-
   tabs.receive._.list.key('d', function() {
     var list = tabs.receive._.list
       , el = list.items[list.selected];
@@ -757,13 +831,13 @@ function start(stats, callback) {
       , label = parts[0]
       , address = parts[1];
 
-    tabs.receive._.question.ask('Are you sure you want to delete this?', function(err, value) {
-      if (err) return msg.error(err.message);
+    screen._.question.ask('Are you sure you want to delete this?', function(err, value) {
+      if (err) return screen._.msg.error(err.message);
       if (!value) return screen.render();
       return client.call('setaccount', [address], function(err) {
-        if (err) return msg.error(err.message);
+        if (err) return screen._.msg.error(err.message);
         text = 'Deleted address: {blue-fg}' + address + '{/blue-fg}';
-        msg.display(text);
+        screen._.msg.display(text);
         screen.render();
         refresh();
       });
@@ -778,12 +852,12 @@ function start(stats, callback) {
 
     if (label === 'new') {
       text = 'Label for new address:';
-      return tabs.receive._.prompt.type(text, '', function(err, value) {
-        if (err) return msg.error(err.message);
+      return screen._.prompt.type(text, '', function(err, value) {
+        if (err) return screen._.msg.error(err.message);
         return createAddress(value, function(err, address) {
-          if (err) return msg.error(err.message);
+          if (err) return screen._.msg.error(err.message);
           text = 'Created address: {blue-fg}' + address + '{/blue-fg}';
-          msg.display(text);
+          screen._.msg.display(text);
           screen.render();
           refresh();
         });
@@ -791,13 +865,13 @@ function start(stats, callback) {
     }
 
     text = 'Label for {blue-fg}' + address + '{/blue-fg}:';
-    return tabs.receive._.prompt.type(text, '', function(err, value) {
-      if (err) return msg.error(err.message);
-      if (!value) return;
+    return screen._.prompt.type(text, '', function(err, value) {
+      if (err) return screen._.msg.error(err.message);
+      if (!value) return screen.render();
       return client.call('setaccount', [address, value], function(err) {
-        if (err) return msg.error(err.message);
+        if (err) return screen._.msg.error(err.message);
         text = 'Edited label: {blue-fg}' + label + '->' + value + '{/blue-fg}';
-        msg.display(text);
+        screen._.msg.display(text);
         screen.render();
         refresh();
       });
@@ -927,36 +1001,8 @@ function start(stats, callback) {
     }
   });
 
-  tabs.addresses._.prompt = blessed.prompt({
-    parent: tabs.addresses,
-    top: 'center',
-    left: 'center',
-    keys: true,
-    vi: true,
-    mouse: true,
-    tags: true,
-    content: 'Label:',
-    border: 'line',
-    hidden: true
-  });
-
-  tabs.addresses._.question = blessed.question({
-    parent: tabs.addresses,
-    top: 'center',
-    left: 'center',
-    width: 'shrink',
-    height: 'shrink',
-    keys: true,
-    vi: true,
-    mouse: true,
-    tags: true,
-    content: 'Label:',
-    border: 'line',
-    hidden: true
-  });
-
   tabs.addresses._.list.key('d', function() {
-    return msg.error('Not supported.');
+    return screen._.msg.error('Not supported.');
 
     var list = tabs.addresses._.list
       , el = list.items[list.selected];
@@ -965,15 +1011,15 @@ function start(stats, callback) {
       , label = parts[0]
       , address = parts[1];
 
-    tabs.addresses._.question.ask('Are you sure you want to delete this?', function(err, value) {
-      if (err) return msg.error(err.message);
+    screen._.question.ask('Are you sure you want to delete this?', function(err, value) {
+      if (err) return screen._.msg.error(err.message);
       if (!value) return screen.render();
       // NOTE: This won't work since the rpc server doesn't expose the send addresses.
       //return client.call('setaccount', [address], function(err) {
       return client.call('setaddresspageaccount', [address], function(err) {
-        if (err) return msg.error(err.message);
+        if (err) return screen._.msg.error(err.message);
         text = 'Deleted address: {blue-fg}' + address + '{/blue-fg}';
-        msg.display(text);
+        screen._.msg.display(text);
         screen.render();
         refresh();
       });
@@ -981,7 +1027,7 @@ function start(stats, callback) {
   });
 
   tabs.addresses._.list.on('select', function(el, index) {
-    return msg.error('Not supported.');
+    return screen._.msg.error('Not supported.');
 
     var parts = el.getText().trim().split(/\s+/)
       , label = parts[0]
@@ -990,19 +1036,19 @@ function start(stats, callback) {
 
     if (label === 'new') {
       text = 'Label for new address:';
-      return tabs.addresses._.prompt.type(text, '', function(err, label) {
-        if (err) return msg.error(err.message);
+      return screen._.prompt.type(text, '', function(err, label) {
+        if (err) return screen._.msg.error(err.message);
         if (!label) return;
         text = 'Address:';
-        return tabs.addresses._.prompt.type(text, '', function(err, address) {
-          if (err) return msg.error(err.message);
+        return screen._.prompt.type(text, '', function(err, address) {
+          if (err) return screen._.msg.error(err.message);
           if (!address) return;
           // NOTE: This won't work since the rpc server doesn't expose the send addresses.
           //return client.call('setaccount', [address, label], function(err) {
           return client.call('setaddresspageaccount', [address], function(err) {
-            if (err) return msg.error(err.message);
+            if (err) return screen._.msg.error(err.message);
             text = 'Created address: {blue-fg}' + label + '{/blue-fg}';
-            msg.display(text);
+            screen._.msg.display(text);
             screen.render();
             refresh();
           });
@@ -1011,17 +1057,105 @@ function start(stats, callback) {
     }
 
     text = 'Label for {blue-fg}' + address + '{/blue-fg}:';
-    return tabs.addresses._.prompt.type(text, '', function(err, value) {
-      if (err) return msg.error(err.message);
+    return screen._.prompt.type(text, '', function(err, value) {
+      if (err) return screen._.msg.error(err.message);
       if (!value) return;
       return client.call('setaccount', [address, value], function(err) {
-        if (err) return msg.error(err.message);
+        if (err) return screen._.msg.error(err.message);
         text = 'Edited label: {blue-fg}' + label + '->' + value + '{/blue-fg}';
-        msg.display(text);
+        screen._.msg.display(text);
         screen.render();
         refresh();
       });
     });
+  });
+
+  /**
+   * Misc
+   */
+
+  tabs.misc._.list = blessed.list({
+    parent: tabs.misc,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    keys: true,
+    vi: true,
+    mouse: true,
+    tags: true,
+    style: {
+      scrollbar: {
+        inverse: true
+      },
+      selected: {
+        bg: 'blue'
+      },
+      item: {
+        hover: {
+          bg: 'blue'
+        }
+      }
+    },
+    scrollbar: {
+      ch: ' '
+    },
+    items: [
+      'Backup Wallet',
+      'Verify Message Signature',
+      'Sign Message'
+    ]
+  });
+
+  tabs.misc.on('focus', function() {
+    tabs.misc._.list.focus();
+  });
+
+  tabs.misc._.list.on('select', function(el, index) {
+    var text = el.getText();
+
+    if (text === 'Backup Wallet') {
+      return backup();
+    }
+
+    if (text === 'Verify Message Signature') {
+      return screen._.prompt.type('Address (Ctrl-E to select):', '', function(err, address) {
+        if (err) return screen._.msg.error(err.message);
+        if (address == null) return screen.render();
+        return screen._.prompt.type('Signature:', '', function(err, sig) {
+          if (err) return screen._.msg.error(err.message);
+          if (sig == null) return screen.render();
+          return screen._.prompt.type('Message:', '', function(err, message) {
+            if (err) return screen._.msg.error(err.message);
+            if (message == null) return screen.render();
+            return verifyMessage(address, sig, message, function(err, result) {
+              if (err) return screen._.msg.error(err.message);
+              if (!result) {
+                return screen._.msg.error('Not verified.');
+              }
+              return screen._.msg.display('Verified!');
+            });
+          });
+        });
+      });
+    }
+
+    if (text === 'Sign Message') {
+      screen._.picker.setItems(Object.keys(stats.accounts));
+      return screen._.picker.pick(function(err, address) {
+        if (err) return screen._.msg.error(err.message);
+        if (address == null) return screen.render();
+        return screen._.prompt.type('Message:', '', function(err, message) {
+          if (err) return screen._.msg.error(err.message);
+          if (message == null) return screen.render();
+          return signMessage(address, message, function(err, signature) {
+            if (err) return screen._.msg.error(err.message);
+            if (signature == null) return screen.render();
+            return screen._.msg.display('Signature:\n' + signature, -1);
+          });
+        });
+      });
+    }
   });
 
   /**
@@ -1059,10 +1193,100 @@ function start(stats, callback) {
   });
 
   /**
+   * Global Widgets
+   */
+
+  screen._.prompt = blessed.prompt({
+    parent: screen,
+    top: 'center',
+    left: 'center',
+    keys: true,
+    vi: true,
+    mouse: true,
+    tags: true,
+    content: 'Label:',
+    border: 'line',
+    hidden: true
+  });
+
+  screen._.prompt._.input.key('C-e', function() {
+    if (!screen.focused || screen.focused !== screen._.prompt._.input) {
+      return;
+    }
+    screen._.prompt._.cancel.press();
+    return pickAddress(function(err, value) {
+      if (err) return screen.render();
+      tabs.misc._.list.emit('select', tabs.misc._.list.items[1], 1);
+      screen._.prompt._.input.setValue(value);
+      screen.render();
+    });
+  });
+
+  screen._.question = blessed.question({
+    parent: screen,
+    top: 'center',
+    left: 'center',
+    width: 'shrink',
+    height: 'shrink',
+    keys: true,
+    vi: true,
+    mouse: true,
+    tags: true,
+    content: 'Label:',
+    border: 'line',
+    hidden: true
+  });
+
+  screen._.fm = blessed.filemanager({
+    parent: screen,
+    top: 'center',
+    left: 'center',
+    width: '75%',
+    height: '60%',
+    keys: true,
+    vi: true,
+    mouse: true,
+    tags: true,
+    label: ' Choose a file... ',
+    border: 'line',
+    hidden: true
+  });
+
+  screen._.picker = blessed.list({
+    parent: screen,
+    top: 'center',
+    left: 'center',
+    height: '50%',
+    width: '70%',
+    border: 'line',
+    keys: true,
+    vi: true,
+    mouse: true,
+    tags: true,
+    hidden: true,
+    style: {
+      scrollbar: {
+        inverse: true
+      },
+      selected: {
+        bg: 'blue'
+      },
+      item: {
+        hover: {
+          bg: 'blue'
+        }
+      }
+    },
+    scrollbar: {
+      ch: ' '
+    }
+  });
+
+  /**
    * Loader
    */
 
-  var loader = blessed.loading({
+  screen._.loader = blessed.loading({
     parent: screen,
     top: 'center',
     left: 'center',
@@ -1078,7 +1302,7 @@ function start(stats, callback) {
    * Message
    */
 
-  var msg = blessed.message({
+  screen._.msg = blessed.message({
     parent: screen,
     top: 'center',
     left: 'center',
@@ -1092,13 +1316,35 @@ function start(stats, callback) {
     border: 'line'
   });
 
-  msg.display('Welcome to {blue-fg}termcoin{/blue-fg}!');
+  screen._.msg.display('Welcome to {blue-fg}termcoin{/blue-fg}!');
+
+  function checkEncrypt(callback) {
+    if (!stats.encrypted) return callback();
+    if (decryptTime && decryptTime + 60 * 60 > Date.now()) return callback();
+    return screen._.prompt.type('Enter your passphrase (valid for 60 min):', '', function(err, value) {
+      if (err) {
+        screen.render();
+        return callback(err.message);
+      }
+      if (value == null) {
+        return screen.render();
+      }
+      return decryptWallet(value, 60 * 60, function(err, result) {
+        if (err) {
+          screen.render();
+          return callback(err.message);
+        }
+        decryptTime = Date.now();
+        return callback(null);
+      });
+    });
+  }
 
   function refresh(callback, noLoad) {
-    if (!noLoad) loader.load('Loading...');
+    if (!noLoad) screen._.loader.load('Loading...');
     return getStats(function(err, stats_) {
       if (err) {
-        if (!noLoad) loader.stop();
+        if (!noLoad) screen._.loader.stop();
         return;
       }
 
@@ -1191,8 +1437,12 @@ function start(stats, callback) {
 
       screen.render();
 
-      if (!noLoad) loader.stop();
-      if (callback) callback();
+      if (!noLoad) screen._.loader.stop();
+
+      return checkEncrypt(function(err) {
+        if (err) screen._.msg.error(err.message);
+        if (callback) callback();
+      });
     });
   }
 
