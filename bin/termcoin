@@ -48,7 +48,7 @@ var coins = {
     config: process.env.HOME + '/.litecoin/litecoin.conf',
     wallet: process.env.HOME + '/.litecoin/wallet.dat',
     log: process.env.HOME + '/.litecoin/debug.log',
-    pid: process.env.HOME + '/.bitcoin/litecoind.pid'
+    pid: process.env.HOME + '/.litecoind/litecoind.pid'
   },
   dogecoin: {
     name: 'dogecoin',
@@ -56,7 +56,7 @@ var coins = {
     config: process.env.HOME + '/.dogecoin/dogecoin.conf',
     wallet: process.env.HOME + '/.dogecoin/wallet.dat',
     log: process.env.HOME + '/.dogecoin/debug.log',
-    pid: process.env.HOME + '/.bitcoin/dogecoind.pid'
+    pid: process.env.HOME + '/.dogecoin/dogecoind.pid'
   },
   namecoin: {
     name: 'namecoin',
@@ -64,7 +64,25 @@ var coins = {
     config: process.env.HOME + '/.namecoin/namecoin.conf',
     wallet: process.env.HOME + '/.namecoin/wallet.dat',
     log: process.env.HOME + '/.namecoin/debug.log',
-    pid: process.env.HOME + '/.bitcoin/namecoind.pid'
+    pid: process.env.HOME + '/.namecoin/namecoind.pid'
+  },
+  coynecoin: {
+    name: 'coynecoin',
+    daemon: 'coynecoind',
+    config: process.env.HOME + '/.coynecoin/coynecoin.conf',
+    wallet: process.env.HOME + '/.coynecoin/wallet.dat',
+    log: process.env.HOME + '/.coynecoin/debug.log',
+    pid: process.env.HOME + '/.coynecoin/coynecoind.pid'
+  },
+  unknown: function(name) {
+    return {
+      name: name,
+      daemon: name + 'd',
+      config: process.env.HOME + '/.' + name + '/' + name + '.conf',
+      wallet: process.env.HOME + '/.' + name + '/wallet.dat',
+      log: process.env.HOME + '/.' + name + '/debug.log',
+      pid: process.env.HOME + '/.' + name + '/' + name + 'd.pid'
+    };
   }
 };
 
@@ -1625,7 +1643,8 @@ function tailBox(file, box) {
 function parseArg(argv) {
   var argv = argv.slice(2)
     , options = {}
-    , files = [];
+    , files = []
+    , name;
 
   function getarg() {
     var arg = argv.shift();
@@ -1660,8 +1679,8 @@ function parseArg(argv) {
     switch (arg) {
       case '-c':
       case '--currency':
-        platform = coins[argv.shift()];
-        if (!platform) throw new Error('Unrecognized currency.');
+        name = argv.shift();
+        platform = coins[name] || coins.unknown(name);
         break;
       case '-s':
       case '--server':
