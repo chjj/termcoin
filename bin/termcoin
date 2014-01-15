@@ -200,13 +200,18 @@ function getAccounts(callback) {
   return client.call('listaccounts', function(err, accounts) {
     if (err) return callback(err);
     return forEach(Object.keys(accounts), function(name, next) {
-      return client.call('getaccountaddress', [name], function(err, address) {
+      //return client.call('getaccountaddress', [name], function(err, address) {
+      //  if (err) return next();
+      //  address = [addresss];
+      return client.call('getaddressesbyaccount', [name], function(err, address) {
         if (err) return next();
-        results[address] = {
-          name: name,
-          address: address,
-          balance: accounts[name]
-        };
+        address.forEach(function(address) {
+          results[address] = {
+            name: name,
+            address: address,
+            balance: accounts[name]
+          };
+        });
         return next();
       });
     }, function() {
@@ -307,15 +312,23 @@ function encryptWallet(passphrase, callback) {
 }
 
 function decryptWallet(passphrase, timeout, callback) {
-  return client.call('walletpassphrase', [passphrase, timeout], callback);
+  return client.call('walletpassphrase', [passphrase, timeout], function(err) {
+    if (err) {
+      if (~err.message.indexOf('Wallet is already unlocked')) {
+        return callback();
+      }
+      return callback(err);
+    }
+    return callback();
+  });
 }
 
-function decryptWallet(opassphrase, npassphrase, callback) {
+function changePassphrase(opassphrase, npassphrase, callback) {
   return client.call('walletpassphrasechange', [opassphrase, npassphrase], callback);
 }
 
-function lockWallet(callback) {
-  return client.call('lockwallet', [], callback);
+function forgetKey(callback) {
+  return client.call('walletlock', [], callback);
 }
 
 function isEncrypted(callback) {
@@ -323,6 +336,9 @@ function isEncrypted(callback) {
     if (err) {
       if (err.code === -15 && ~err.message.indexOf('unencrypted wallet')) {
         return callback(null, false);
+      }
+      if (~err.message.indexOf('walletpassphrase <passphrase> <timeout>')) {
+        return callback(null, true);
       }
       return callback(err);
     }
@@ -374,7 +390,9 @@ function startServer(callback) {
   //return cp.exec('(setsid ' + platform.daemon + ' stop > /dev/null 2>& 1 &)', function(err) {
   //if (err) return callback(err);
 
-  console.log('Starting new server.');
+  if (!client) {
+    console.log('Starting new server.');
+  }
 
   var cmd = [
     platform.daemon,
@@ -624,9 +642,9 @@ function start(stats, callback) {
     });
   }
 
-  tabs.overview._.backup.on('press', function() {
-    backup();
-  });
+  // tabs.overview._.backup.on('press', function() {
+  //   backup();
+  // });
 
   /**
    * Send
@@ -918,7 +936,8 @@ function start(stats, callback) {
       text = 'Label for new address:';
       return screen._.prompt.type(text, '', function(err, value) {
         if (err) return screen._.msg.error(err.message);
-        return createAddress(value || '', function(err, address) {
+        value = value || '';
+        return createAddress(value, function(err, address) {
           if (err) return screen._.msg.error(err.message);
           text = 'Created address: {blue-fg}' + address + '{/blue-fg}';
           screen._.msg.display(text);
@@ -932,13 +951,16 @@ function start(stats, callback) {
     return screen._.prompt.type(text, '', function(err, value) {
       if (err) return screen._.msg.error(err.message);
 
+      //value = value || '';
+      if (value == null) return screen.render();
       // return screen._.msg.error('Not supported.');
 
       // XXX Not working:
-      // return client.call('setaccount', [address, value || ''], function(err) {
+      // return client.call('setaccount', [address, value], function(err) {
       return process.nextTick(function(err) {
         if (err) return screen._.msg.error(err.message);
-        text = 'Edited label: {blue-fg}' + label + '->' + value + '{/blue-fg}';
+        text = 'Edited label: {blue-fg}'
+          + label + '->' + (value || '[none]') + '{/blue-fg}';
         screen._.msg.display(text);
         screen.render();
         refresh();
@@ -1180,6 +1202,7 @@ function start(stats, callback) {
       ch: ' '
     },
     items: [
+      'Encrypt Wallet',
       'Backup Wallet',
       'Verify Message Signature',
       'Sign Message'
@@ -1190,8 +1213,83 @@ function start(stats, callback) {
     tabs.misc._.list.focus();
   });
 
+  process.on('uncaughtException', function(err) {
+    if (client.lock) return;
+    console.error(err.stack);
+    process.exit(1);
+  });
+
   tabs.misc._.list.on('select', function(el, index) {
     var text = el.getText();
+
+    if (text === 'Encrypt Wallet') {
+      return isEncrypted(function(err, encrypted) {
+        if (err) return screen._.msg.error(err.message);
+        if (encrypted) {
+          screen._.prompt._.input.censor = true;
+          return screen._.prompt.type('Current Passphrase:', '', function(err, opassphrase) {
+            screen._.prompt._.input.censor = false;
+            if (err) return screen._.msg.error(err.message);
+            if (opassphrase == null) return screen.render();
+            screen._.prompt._.input.censor = true;
+            return screen._.prompt.type('New passphrase:', '', function(err, npassphrase) {
+              screen._.prompt._.input.censor = false;
+              if (err) return screen._.msg.error(err.message);
+              if (npassphrase == null) return screen.render();
+              screen._.prompt._.input.censor = true;
+              return screen._.prompt.type('Verify Passphrase:', '', function(err, verify) {
+                screen._.prompt._.input.censor = false;
+                if (err) return screen._.msg.error(err.message);
+                if (verify == null) return screen.render();
+                if (npassphrase !== verify) {
+                  return screen._.msg.error('Passphrases do not match.');
+                }
+                return changePassphrase(opassphrase, npassphrase, function(err) {
+                  if (err) return screen._.msg.error(err.message);
+                  return screen._.msg.display('Passphrase changed.');
+                });
+              });
+            });
+          });
+        }
+        screen._.prompt._.input.censor = true;
+        return screen._.prompt.type('Passphrase:', '', function(err, passphrase) {
+          screen._.prompt._.input.censor = false;
+          if (err) return screen._.msg.error(err.message);
+          if (passphrase == null) return screen.render();
+          screen._.prompt._.input.censor = true;
+          return screen._.prompt.type('Verify Passphrase:', '', function(err, verify) {
+            screen._.prompt._.input.censor = false;
+            if (err) return screen._.msg.error(err.message);
+            if (verify == null) return screen.render();
+            if (passphrase !== verify) {
+              return screen._.msg.error('Passphrases do not match.');
+            }
+            screen.render();
+            return encryptWallet(passphrase, function(err) {
+              if (err) return screen._.msg.error(err.message);
+              if (opt.host) {
+                return screen._.msg.display('Wallet is now encrypted.');
+              }
+              client.lock = true;
+              screen._.loader.load('Restarting server...');
+              return setTimeout(function() {
+                return fs.unlink(platform.pid, function() {
+                  return startServer(function() {
+                    client.lock = false;
+                    return decryptWallet(passphrase, 60 * 60, function() {
+                      screen._.loader.stop();
+                      decryptTime = Date.now();
+                      return screen._.msg.display('Wallet is now encrypted.');
+                    });
+                  });
+                });
+              }, 10000);
+            });
+          });
+        });
+      });
+    }
 
     if (text === 'Backup Wallet') {
       return backup();
@@ -1371,7 +1469,7 @@ function start(stats, callback) {
     parent: screen,
     top: 'center',
     left: 'center',
-    height: 3,
+    height: 5,
     align: 'center',
     width: '50%',
     tags: true,
@@ -1397,33 +1495,42 @@ function start(stats, callback) {
     border: 'line'
   });
 
-  screen._.msg.display('Welcome to {blue-fg}termcoin{/blue-fg}!');
+  if (!stats.encrypted) {
+    screen._.msg.display('Welcome to {blue-fg}termcoin{/blue-fg}!');
+  }
 
   function checkEncrypt(callback) {
     if (!stats.encrypted) return callback();
-    if (decryptTime && decryptTime + 60 * 60 > Date.now()) return callback();
+    if (decryptTime && decryptTime + 60 * 60 * 1000 > Date.now()) return callback();
+    screen._.prompt._.input.censor = true;
     return screen._.prompt.type('Enter your passphrase (valid for 60 min):', '', function(err, value) {
+      screen._.prompt._.input.censor = false;
       if (err) {
         screen.render();
-        return callback(err.message);
+        return callback(err);
       }
       if (value == null) {
         return screen.render();
       }
-      return decryptWallet(value, 60 * 60, function(err, result) {
-        if (err) {
+      return forgetKey(function() {
+        return decryptWallet(value, 60 * 60, function(err, result) {
+          if (err) {
+            screen.render();
+            return callback(err);
+          }
+          decryptTime = Date.now();
           screen.render();
-          return callback(err.message);
-        }
-        decryptTime = Date.now();
-        return callback(null);
+          return callback(null);
+        });
       });
     });
   }
 
   function refresh(callback, noLoad) {
+    if (client.lock) return callback();
     if (!noLoad) screen._.loader.load('Loading...');
     return getStats(function(err, stats_) {
+      if (client.lock) return callback();
       if (err) {
         if (!noLoad) screen._.loader.stop();
         return;
@@ -1448,7 +1555,7 @@ function start(stats, callback) {
       items = accounts.reduce(function(out, account) {
         var w = screen.width;
         var name = account.name || '[none]';
-        var sp = Array(w - (account.address.length + name.length) + 1).join(' ');
+        var sp = Array(w - (account.address.length + name.length) - 3 + 1).join(' ');
         out.push('{blue-fg}' + name + '{/blue-fg}'
           + sp + '{green-fg}' + account.address + '{/green-fg}');
         return out;
@@ -1848,7 +1955,10 @@ Client.prototype.request = function(options, callback) {
     json: body
   };
 
+  if (self.lock) return callback(null, {});
   return request(options, function(err, res, body) {
+    if (self.lock) return callback(null, {});
+
     if (err) {
       return callback(new Error(err));
     }
@@ -1897,18 +2007,9 @@ function inspect(obj) {
 
 function asort(obj) {
   return obj.sort(function(a, b) {
-    a = a.name.toLowerCase();
-    b = b.name.toLowerCase();
-
-    if (a[0] === '.' && b[0] === '.') {
-      a = a[1];
-      b = b[1];
-    } else {
-      a = a[0];
-      b = b[0];
-    }
-
-    return a > b ? 1 : (a < b ? -1 : 0);
+    a = a.name.toLowerCase().charCodeAt(0);
+    b = b.name.toLowerCase().charCodeAt(0);
+    return a - b;
   });
 }
 
