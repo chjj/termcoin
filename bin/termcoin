@@ -574,28 +574,28 @@ function start(stats, callback) {
     });
   })();
 
-  tabs.overview._.backup = blessed.button({
-    parent: tabs.overview,
-    bottom: 0,
-    right: 3,
-    height: 'shrink',
-    width: 'shrink',
-    content: 'Backup Wallet',
-    tags: true,
-    border: 'line',
-    mouse: true,
-    keys: true,
-    style: {
-      fg: 'default',
-      bg: 'blue',
-      hover: {
-        bg: 'lightblack'
-      },
-      border: {
-        bg: 'blue'
-      }
-    }
-  });
+  // tabs.overview._.backup = blessed.button({
+  //   parent: tabs.overview,
+  //   bottom: 0,
+  //   right: 3,
+  //   height: 'shrink',
+  //   width: 'shrink',
+  //   content: 'Backup Wallet',
+  //   tags: true,
+  //   border: 'line',
+  //   mouse: true,
+  //   keys: true,
+  //   style: {
+  //     fg: 'default',
+  //     bg: 'blue',
+  //     hover: {
+  //       bg: 'lightblack'
+  //     },
+  //     border: {
+  //       bg: 'blue'
+  //     }
+  //   }
+  // });
 
   function backup() {
     return screen._.prompt.type('Save to:', process.env.HOME, function(err, value) {
