@@ -893,7 +893,12 @@ function start(stats, callback) {
     screen._.question.ask('Are you sure you want to delete this?', function(err, value) {
       if (err) return screen._.msg.error(err.message);
       if (!value) return screen.render();
-      return client.call('setaccount', [address], function(err) {
+
+      // return screen._.msg.error('Not supported.');
+
+      // XXX Not working:
+      // return client.call('setaccount', [address], function(err) {
+      return process.nextTick(function(err) {
         if (err) return screen._.msg.error(err.message);
         text = 'Deleted address: {blue-fg}' + address + '{/blue-fg}';
         screen._.msg.display(text);
@@ -913,7 +918,7 @@ function start(stats, callback) {
       text = 'Label for new address:';
       return screen._.prompt.type(text, '', function(err, value) {
         if (err) return screen._.msg.error(err.message);
-        return createAddress(value, function(err, address) {
+        return createAddress(value || '', function(err, address) {
           if (err) return screen._.msg.error(err.message);
           text = 'Created address: {blue-fg}' + address + '{/blue-fg}';
           screen._.msg.display(text);
@@ -926,8 +931,12 @@ function start(stats, callback) {
     text = 'Label for {blue-fg}' + address + '{/blue-fg}:';
     return screen._.prompt.type(text, '', function(err, value) {
       if (err) return screen._.msg.error(err.message);
-      if (!value) return screen.render();
-      return client.call('setaccount', [address, value], function(err) {
+
+      // return screen._.msg.error('Not supported.');
+
+      // XXX Not working:
+      // return client.call('setaccount', [address, value || ''], function(err) {
+      return process.nextTick(function(err) {
         if (err) return screen._.msg.error(err.message);
         text = 'Edited label: {blue-fg}' + label + '->' + value + '{/blue-fg}';
         screen._.msg.display(text);
@@ -1061,8 +1070,6 @@ function start(stats, callback) {
   });
 
   tabs.addresses._.list.key('d', function() {
-    return screen._.msg.error('Not supported.');
-
     var list = tabs.addresses._.list
       , el = list.items[list.selected];
 
@@ -1073,9 +1080,14 @@ function start(stats, callback) {
     screen._.question.ask('Are you sure you want to delete this?', function(err, value) {
       if (err) return screen._.msg.error(err.message);
       if (!value) return screen.render();
+
+      // return screen._.msg.error('Not supported.');
+
+      // XXX Not working:
       // NOTE: This won't work since the rpc server doesn't expose the send addresses.
-      //return client.call('setaccount', [address], function(err) {
-      return client.call('setaddresspageaccount', [address], function(err) {
+      // return client.call('setaccount', [address], function(err) {
+      // Should look like: return client.call('setaddresspageaccount', [address], function(err) {
+      return process.nextTick(function(err) {
         if (err) return screen._.msg.error(err.message);
         text = 'Deleted address: {blue-fg}' + address + '{/blue-fg}';
         screen._.msg.display(text);
@@ -1086,8 +1098,6 @@ function start(stats, callback) {
   });
 
   tabs.addresses._.list.on('select', function(el, index) {
-    return screen._.msg.error('Not supported.');
-
     var parts = el.getText().trim().split(/\s+/)
       , label = parts[0]
       , address = parts[1]
@@ -1097,14 +1107,19 @@ function start(stats, callback) {
       text = 'Label for new address:';
       return screen._.prompt.type(text, '', function(err, label) {
         if (err) return screen._.msg.error(err.message);
-        if (!label) return;
+        if (!label) return screen.render();
         text = 'Address:';
         return screen._.prompt.type(text, '', function(err, address) {
           if (err) return screen._.msg.error(err.message);
-          if (!address) return;
+          if (!address) return screen.render();
+
+          // return screen._.msg.error('Not supported.');
+
+          // XXX Not working:
           // NOTE: This won't work since the rpc server doesn't expose the send addresses.
-          //return client.call('setaccount', [address, label], function(err) {
-          return client.call('setaddresspageaccount', [address], function(err) {
+          // return client.call('setaccount', [address, label], function(err) {
+          // Should look like: return client.call('setaddresspageaccount', [address], function(err) {
+          return process.nextTick(function(err) {
             if (err) return screen._.msg.error(err.message);
             text = 'Created address: {blue-fg}' + label + '{/blue-fg}';
             screen._.msg.display(text);
@@ -1118,8 +1133,13 @@ function start(stats, callback) {
     text = 'Label for {blue-fg}' + address + '{/blue-fg}:';
     return screen._.prompt.type(text, '', function(err, value) {
       if (err) return screen._.msg.error(err.message);
-      if (!value) return;
-      return client.call('setaccount', [address, value], function(err) {
+      if (!value) return screen.render();
+
+      // return screen._.msg.error('Not supported.');
+
+      // XXX Not working:
+      // return client.call('setaccount', [address, value], function(err) {
+      return process.nextTick(function(err) {
         if (err) return screen._.msg.error(err.message);
         text = 'Edited label: {blue-fg}' + label + '->' + value + '{/blue-fg}';
         screen._.msg.display(text);
@@ -1598,6 +1618,7 @@ function tailBox(file, box) {
   var stream = tailf(file)
     , rendering;
 
+/*
   stream.on('line', function(line) {
     box.pushLine(line);
     if (box._clines.fake.length > 200) {
@@ -1613,8 +1634,8 @@ function tailBox(file, box) {
       box.screen.render();
     });
   });
+*/
 
-/*
   var lines = [];
   stream.on('line', function(line) {
     var h = box.height;
@@ -1635,7 +1656,6 @@ function tailBox(file, box) {
       box.screen.render();
     });
   });
-*/
 
   return stream.destroy.bind(stream);
 }
