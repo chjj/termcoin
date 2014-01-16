@@ -350,6 +350,10 @@ function send(address, amount, callback) {
   return client.call('sendtoaddress', [address, amount], callback);
 }
 
+function sendFrom(from, address, amount, callback) {
+  return client.call('sendfrom', [from, address, amount], callback);
+}
+
 function move(from, to, amount, callback) {
   return client.call('move', [from, to, amount], callback);
 }
@@ -754,6 +758,36 @@ function start(stats, callback) {
     }
   });
 
+  tabs.send._.ftext = blessed.text({
+    parent: tabs.send._.form,
+    top: 6,
+    left: 0,
+    height: 1,
+    content: ' {underline}F{/underline}rom:',
+    tags: true,
+    hidden: true
+  });
+
+  tabs.send._.from = blessed.textbox({
+    parent: tabs.send._.form,
+    name: 'from',
+    inputOnFocus: true,
+    top: 6,
+    left: 9,
+    right: 1,
+    height: 1,
+    style: {
+      bg: 'black',
+      focus: {
+        bg: 'blue'
+      },
+      hover: {
+        bg: 'blue'
+      }
+    },
+    hidden: true
+  });
+
   tabs.send._.submit = blessed.button({
     parent: tabs.send._.form,
     name: 'submit',
@@ -775,7 +809,7 @@ function start(stats, callback) {
 
   tabs.send._.note = blessed.text({
     parent: tabs.send._.form,
-    top: 6,
+    top: 8,
     left: 0,
     height: 'shrink',
     right: 10,
@@ -788,6 +822,13 @@ function start(stats, callback) {
   });
 
   tabs.send._.form.on('submit', function(data) {
+    if (tabs.send._.from.visible) {
+      tabs.send._.ftext.hide();
+      tabs.send._.from.hide();
+      tabs.send._.submit.rtop = 6;
+      tabs.send._.note.rtop = 8;
+    }
+
     var alias = stats.addresses.reduce(function(out, item) {
       out[item.name] = item;
       return out;
@@ -815,7 +856,15 @@ function start(stats, callback) {
 
     return checkEncrypt(function(err) {
       if (err) return screen._.msg.error(err.message);
-      return send(data.address, +data.amount, function(err, result) {
+
+      var sendTo = function(callback) {
+        if (data.from) {
+          return sendFrom(data.from, data.address, +data.amout, callback);
+        }
+        return send(data.address, +data.amout, callback);
+      };
+
+      return sendTo(function(err, result) {
         if (err) return screen._.msg.error(err.message);
         if (!result || !Object.keys(result).length) {
           return screen._.msg.error('Transaction not completed.');
@@ -901,6 +950,10 @@ function start(stats, callback) {
   });
 
   tabs.receive._.list.key('d', function() {
+    deleteAddress();
+  });
+
+  function deleteAddress() {
     var list = tabs.receive._.list
       , el = list.items[list.selected];
 
@@ -924,7 +977,7 @@ function start(stats, callback) {
         refresh();
       });
     });
-  });
+  }
 
   tabs.receive._.list.on('select', function(el, index) {
     var parts = el.getText().trim().split(/\s+/)
@@ -947,27 +1000,79 @@ function start(stats, callback) {
       });
     }
 
-    text = 'Label for {blue-fg}' + address + '{/blue-fg}:';
-    return screen._.prompt.type(text, '', function(err, value) {
+    screen._.picker.setItems([
+      'Show QR Code',
+      'Save QR Code PNG',
+      'Send From',
+      'Rename',
+      'Delete'
+    ]);
+
+    return screen._.picker.pick(function(err, option) {
       if (err) return screen._.msg.error(err.message);
 
-      //value = value || '';
-      if (value == null) return screen.render();
-      // return screen._.msg.error('Not supported.');
+      if (option === 'Show QR Code') {
+        return cp.execFile('qrencode', ['-t', 'ANSI256', address], function(err, stdout, stderr) {
+          if (err) {
+            return screen._.msg.error('qrencode not found. Please install it.');
+          }
+          screen._.box._.show(stdout.trim());
+        });
+      }
 
-      // XXX Not working:
-      // return client.call('setaccount', [address, value], function(err) {
-      return process.nextTick(function(err) {
-        if (err) return screen._.msg.error(err.message);
-        text = 'Edited label: {blue-fg}'
-          + label + '->' + (value || '[none]') + '{/blue-fg}';
-        screen._.msg.display(text);
+      if (option === 'Save QR Code PNG') {
+        return screen._.prompt.type('Save to:', process.env.HOME + '/', function(err, file) {
+          if (err) return screen._.msg.error(err.message);
+          return cp.execFile('qrencode', ['-t', 'PNG', '-o', file, address], function(err, stdout, stderr) {
+            if (err) {
+              return screen._.msg.error('qrencode not found. Please install it.');
+            }
+            return screen._.msg.display('Successfully saved file.');
+          });
+        });
+      }
+
+      if (option === 'Send From') {
+        tabs.send._.submit.rtop = 8;
+        tabs.send._.note.rtop = 10;
+        tabs.send._.ftext.show();
+        tabs.send._.from.show();
+        // XXX Fix this in blessed - shouldn't have to do this:
+        screen.emit('keypress', '2', { name: '2' });
+        tabs.send._.from.setValue(address);
+        //tabs.send._.address.focus();
+        tabs.send._.form.focusNext();
         screen.render();
-        refresh();
-      });
+        return;
+      }
+
+      if (option === 'Rename') {
+        text = 'Label for {blue-fg}' + address + '{/blue-fg}:';
+        return screen._.prompt.type(text, '', function(err, value) {
+          if (err) return screen._.msg.error(err.message);
+
+          //value = value || '';
+          if (value == null) return screen.render();
+          // return screen._.msg.error('Not supported.');
+
+          // XXX Not working:
+          // return client.call('setaccount', [address, value], function(err) {
+          return process.nextTick(function(err) {
+            if (err) return screen._.msg.error(err.message);
+            text = 'Edited label: {blue-fg}'
+              + label + '->' + (value || '[none]') + '{/blue-fg}';
+            screen._.msg.display(text);
+            screen.render();
+            refresh();
+          });
+        });
+      }
+
+      if (option === 'Delete') {
+        return deleteAddress();
+      }
     });
   });
-
 
   /**
    * Transactions
@@ -1205,7 +1310,9 @@ function start(stats, callback) {
       'Encrypt Wallet',
       'Backup Wallet',
       'Verify Message Signature',
-      'Sign Message'
+      'Sign Message',
+      'Rescan Addresses',
+      'Set Transaction Fee'
     ]
   });
 
@@ -1330,6 +1437,28 @@ function start(stats, callback) {
             if (signature == null) return screen.render();
             return screen._.msg.display('Signature:\n' + signature, -1);
           });
+        });
+      });
+    }
+
+    if (text === 'Rescan Addresses') {
+      screen._.loader.load('Rescanning...');
+      return cp.execFile(platform.daemon, ['-rescan'], function(err, stdout, stderr) {
+        screen._.loader.stop();
+        if (err || stderr) {
+          return screen._.msg.error(stderr || err.message);
+        }
+        return screen._.msg.display('Successfully rescanned addresses.');
+      });
+    }
+
+    if (text === 'Set Transaction Fee') {
+      return screen._.prompt.type('Transaction Fee:', '0', function(err, value) {
+        if (err) return screen._.msg.error(err.message);
+        if (value == null) return screen.render();
+        return client.call('settxfee', [+value], function(err) {
+          if (err) return screen._.msg.error(err.message);
+          return screen._.msg.display('Successfully set transaction fee.');
         });
       });
     }
@@ -1495,6 +1624,47 @@ function start(stats, callback) {
     border: 'line'
   });
 
+  /**
+   * Big Box
+   */
+
+  screen._.box = blessed.box({
+    parent: screen,
+    scrollable: true,
+    alwaysScroll: true,
+    top: 0,
+    left: 0,
+    bottom: 0,
+    right: 0,
+    align: 'center',
+    tags: true,
+    hidden: true,
+    keys: true,
+    vi: true,
+    scrollbar: {
+      ch: ' '
+    },
+    style: {
+      scrollbar: {
+        inverse: true
+      }
+    }
+  });
+
+  screen._.box._.show = function(content) {
+    screen.saveFocus();
+    screen._.box.focus();
+    screen._.box.setContent(content);
+    screen._.box.show();
+    screen.render();
+  };
+
+  screen._.box.key(['q', 'escape'], function() {
+    screen._.box.hide();
+    screen.restoreFocus();
+    screen.render();
+  });
+
   if (!stats.encrypted) {
     screen._.msg.display('Welcome to {blue-fg}termcoin{/blue-fg}!');
   }
@@ -1640,7 +1810,13 @@ function start(stats, callback) {
     }, true);
   })();
 
-  screen.key(['C-c', 'q'], function() {
+  screen.key(['C-c', 'q'], function(ch, key) {
+    // TODO: Something like:
+    //if (key.name === 'q') {
+    //  if (screen.focused && (screen.focused.parent !== wrapper || screen.focused.parent._isTab)) {
+    //    return;
+    //  }
+    //}
     if (!opt.host) {
       //client.call('stop', function() {
       return callback();
@@ -1859,14 +2035,14 @@ function main(argv, callback) {
   opt = parseArg(argv);
   config = readConf();
 
-  config.rpchost = opt.host || config.rpchost || 'localhost';
+  config.rpcconnect = opt.host || config.rpcconnect || 'localhost';
   config.rpcport = opt.port || config.rpcport || 8332;
   config.rpcuser = opt.user || config.rpcuser || 'bitcoinrpc';
   config.rpcpassword = opt.password || config.rpcpassword || 'foobar';
   config.rpcssl = opt.ssl || config.rpcssl || false;
 
   client = new Client({
-    host: config.rpchost,
+    host: config.rpcconnect,
     port: config.rpcport,
     user: config.rpcuser,
     pass: config.rpcpassword,
