@@ -66,13 +66,13 @@ var coins = {
     log: process.env.HOME + '/.namecoin/debug.log',
     pid: process.env.HOME + '/.namecoin/namecoind.pid'
   },
-  coynecoin: {
-    name: 'coynecoin',
-    daemon: 'coynecoind',
-    config: process.env.HOME + '/.coynecoin/coynecoin.conf',
-    wallet: process.env.HOME + '/.coynecoin/wallet.dat',
-    log: process.env.HOME + '/.coynecoin/debug.log',
-    pid: process.env.HOME + '/.coynecoin/coynecoind.pid'
+  coinyecoin: {
+    name: 'coinyecoin',
+    daemon: 'coinyecoind',
+    config: process.env.HOME + '/.coinyecoin/coinyecoin.conf',
+    wallet: process.env.HOME + '/.coinyecoin/wallet.dat',
+    log: process.env.HOME + '/.coinyecoin/debug.log',
+    pid: process.env.HOME + '/.coinyecoin/coinyecoind.pid'
   },
   unknown: function(name) {
     return {
