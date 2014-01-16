@@ -1,6 +1,6 @@
 {
   "name": "termcoin",
-  "description": "A TUI for bitcoin.",
+  "description": "A bitcoin wallet for your terminal.",
   "author": "Christopher Jeffrey",
   "version": "0.0.0",
   "main": "./bin/termcoin",
@@ -10,8 +10,8 @@
   "repository": "git://github.com/chjj/termcoin.git",
   "homepage": "https://github.com/chjj/termcoin",
   "bugs": { "url": "http://github.com/chjj/termcoin/issues" },
-  "keywords": ["bitcoin", "tui"],
-  "tags": ["bitcoin", "tui"],
+  "keywords": ["bitcoin", "tui", "terminal", "curses", "blessed"],
+  "tags": ["bitcoin", "tui", "terminal", "curses", "blessed"],
   "scripts": { "test": "node test" },
   "dependencies": {
     "blessed": ">= 0.0.27"
