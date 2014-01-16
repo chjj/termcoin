@@ -2206,6 +2206,7 @@ function tsort(obj, desc) {
 
 var http = require('http');
 var StringDecoder = require('string_decoder').StringDecoder;
+var qs = require('querystring');
 
 function request(options, callback) {
   if (typeof options === 'string' || options.hostname) {
