@@ -55,3 +55,15 @@ The bitcoin rpc server *is* limited in what it could do. Ideally I wanted this
 to have all the capabilities of a full wallet, but that would require, for
 example, linking to to berkeley db to parse the wallet.dat. I wanted to write
 this entirely in node.
+
+## Contribution and License Agreement
+
+If you contribute code to this project, you are implicitly allowing your code
+to be distributed under the MIT license. You are also implicitly verifying that
+all code is your original work. `</legalese>`
+
+## License
+
+Copyright (c) 2014, Christopher Jeffrey. (MIT License)
+
+See LICENSE for more info.
