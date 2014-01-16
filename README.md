@@ -1,13 +1,24 @@
-# termcoin - a bitcoin wallet for your terminal
+# termcoin
 
-termcoin is written in node.js and uses bitcoind (and other cryptocurrency rpc
-servers) as its backend.
+A bitcoin wallet for your terminal.
+
+termcoin is written in node.js and uses bitcoind (and optionally other
+cryptocurrency rpc servers) as its backend.
+
+## Screenshots
+
+![]()
+![]()
+![]()
+![]()
+![]()
+![]()
 
 ## Usage
 
-`` bash
+``` bash
 $ termcoin
-``
+```
 
 termcoin by default tries to connect to the bitcoin rpc server in
 ~/.bitcoin/bitcoin.conf, but it can also be specified directly:
@@ -28,10 +39,6 @@ $ termcoin -c litecoin
   directly.
 - Uses bitcoind as a backend, which means it is also possible to use with
   litecoin/namecoin/dogecoin/etc.
-
-## Todo
-
-- Wallet encryption/decryption
 
 ## Shortcomings
 
