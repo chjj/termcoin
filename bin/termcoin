@@ -4,14 +4,13 @@
  * termcoin
  * Copyright (c) 2014, Christopher Jeffrey
  * https://github.com/chjj/termcoin
+ *
+ * Resources:
+ *   https://github.com/bitcoin/bitcoin/blob/master/src/rpcserver.cpp
+ *   https://github.com/bitcoin/bitcoin/blob/master/src/rpcrawtransaction.cpp
+ *   https://github.com/bitcoin/bitcoin/blob/master/src/rpcwallet.cpp
+ *   https://en.bitcoin.it/wiki/Original_Bitcoin_client/API_Calls_list
  */
-
-// bitcoind -server -daemon -rpcuser=bitcoinrpc -rpcpassword=foobar -rpcport=8332 -rpcallowip=127.0.0.1
-// termcoin http://bitcoinrpc:foobar@localhost:8332/
-// https://github.com/bitcoin/bitcoin/blob/master/src/rpcserver.cpp
-// https://github.com/bitcoin/bitcoin/blob/master/src/rpcrawtransaction.cpp
-// https://github.com/bitcoin/bitcoin/blob/master/src/rpcwallet.cpp
-// http://blockchain.info/api/json_rpc_api
 
 /**
  * Modules
@@ -37,40 +36,9 @@ var opt = parseArg(process.argv.slice())
   , platform
   , client;
 
-function getPlatform(opt) {
-  var name = opt.currency || 'bitcoin';
-  var dir = opt.datadir || process.env.HOME + '/.' + name;
-  return {
-    name: name,
-    daemon: name + 'd',
-    config: dir + '/' + name + '.conf',
-    wallet: dir + '/wallet.dat',
-    log: dir + '/debug.log',
-    pid: dir + '/' + name + 'd.pid'
-  };
-}
-
-function readConf() {
-  var data;
-
-  try {
-    data = fs.readFileSync(platform.config, 'utf8');
-  } catch (e) {
-    return {};
-  }
-
-  data = data.trim().split(/(\r?\n)+/);
-
-  return data.reduce(function(out, line) {
-    var parts = line.trim().split(/\s*=\s*/)
-      , key = parts[0]
-      , val = parts[1];
-
-    out[key] = val;
-
-    return out;
-  }, {});
-}
+/**
+ * API Calls
+ */
 
 function getStats(callback) {
   return getTotalBalance(function(err, balances) {
@@ -159,16 +127,6 @@ function getAddresses(accounts, callback) {
       });
     }
     return callback(null, results);
-  });
-}
-
-function forEach(obj, iter, done) {
-  var pending = obj.length;
-  function next() {
-    --pending || done();
-  }
-  obj.forEach(function(item, i) {
-    iter(item, next, i);
   });
 }
 
@@ -331,6 +289,10 @@ function move(from, to, amount, callback) {
   return client.call('move', [from, to, amount], callback);
 }
 
+/**
+ * Start Server
+ */
+
 function startServer(callback) {
   if (opt.remote) return callback();
 
@@ -373,6 +335,10 @@ function startServer(callback) {
     }, 12 * 1000);
   });
 }
+
+/**
+ * Start
+ */
 
 function start(stats, callback) {
   var screen = blessed.screen({
@@ -1085,7 +1051,7 @@ function start(stats, callback) {
   });
 
   tabs.transactions._.list.on('select', function(el, index) {
-    var tx = tsort(stats.transactions)[index];
+    var tx = tsort(stats.transactions, true)[index];
 
     screen._.picker.setItems([
       'Copy Address',
@@ -2020,6 +1986,10 @@ function start(stats, callback) {
   screen.render();
 }
 
+/**
+ * UI Helpers
+ */
+
 function copy(text, callback) {
   var callback = callback || function() {};
 
@@ -2054,15 +2024,6 @@ function copy(text, callback) {
 
 // `tail -f` a file.
 function tailf(file) {
-  //try {
-  //  var stat = fs.statSync(file);
-  //} catch (e) {
-  //  var s = new (require('stream')).Stream;
-  //  process.nextTick(function() { s.emit('error', e); });
-  //  return s;
-  //}
-  //var options = { encoding: 'utf8', start: Math.max(0, stat.size - 2048) }
-
   var options = { encoding: 'utf8' }
     , stream = fs.createReadStream(file, options)
     , Stream = require('stream').Stream
@@ -2125,24 +2086,6 @@ function tailBox(file, box) {
   var stream = tailf(file)
     , rendering;
 
-/*
-  stream.on('line', function(line) {
-    box.pushLine(line);
-    if (box._clines.fake.length > 200) {
-      //box.setContent('');
-      box.shiftLine(100);
-    }
-    if (rendering) return;
-    rendering = true;
-    process.nextTick(function() {
-      rendering = false;
-      //box.setScroll(box.getScrollHeight());
-      box.setScroll(box._clines.length);
-      box.screen.render();
-    });
-  });
-*/
-
   var lines = [];
   stream.on('line', function(line) {
     var h = box.height;
@@ -2165,6 +2108,45 @@ function tailBox(file, box) {
   });
 
   return stream.destroy.bind(stream);
+}
+
+/**
+ * Options
+ */
+
+function getPlatform(opt) {
+  var name = opt.currency || 'bitcoin';
+  var dir = opt.datadir || process.env.HOME + '/.' + name;
+  return {
+    name: name,
+    daemon: name + 'd',
+    config: dir + '/' + name + '.conf',
+    wallet: dir + '/wallet.dat',
+    log: dir + '/debug.log',
+    pid: dir + '/' + name + 'd.pid'
+  };
+}
+
+function readConf() {
+  var data;
+
+  try {
+    data = fs.readFileSync(platform.config, 'utf8');
+  } catch (e) {
+    return {};
+  }
+
+  data = data.trim().split(/(\r?\n)+/);
+
+  return data.reduce(function(out, line) {
+    var parts = line.trim().split(/\s*=\s*/)
+      , key = parts[0]
+      , val = parts[1];
+
+    out[key] = val;
+
+    return out;
+  }, {});
 }
 
 function parseArg(argv) {
@@ -2256,6 +2238,10 @@ function help() {
   console.log('termcoin - a text ui for bitcoin/litecoin/dogecoin/etc.');
   return process.exit(0);
 }
+
+/**
+ * Main
+ */
 
 function main(callback) {
   if (opt.host
@@ -2404,6 +2390,16 @@ Client.prototype.request = function(options, callback) {
 /**
  * Helpers
  */
+
+function forEach(obj, iter, done) {
+  var pending = obj.length;
+  function next() {
+    --pending || done();
+  }
+  obj.forEach(function(item, i) {
+    iter(item, next, i);
+  });
+}
 
 function inspect(obj) {
   return typeof obj !== 'string'
