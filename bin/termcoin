@@ -20,71 +20,35 @@
 var fs = require('fs')
   , url = require('url')
   , util = require('util')
-  , blessed = require('blessed')
   , path = require('path')
   , cp = require('child_process')
-  , mock = require('../lib/mock')
-  , config
-  , opt;
+  , http = require('http')
+  , StringDecoder = require('string_decoder').StringDecoder
+  , qs = require('querystring');
 
-var now = Date.now()
-  , decryptTime = 0;
+var blessed = require('blessed')
+  , mock = require('../lib/mock');
 
-var platform
+var opt = parseArg(process.argv.slice())
+  , config = readConf()
+  , platform = getPlatform(opt)
+  , now = Date.now()
+  , decryptTime = 0
+  , platform
   , client;
 
-var coins = {
-  bitcoin: {
-    name: 'bitcoin',
-    daemon: 'bitcoind',
-    config: process.env.HOME + '/.bitcoin/bitcoin.conf',
-    wallet: process.env.HOME + '/.bitcoin/wallet.dat',
-    log: process.env.HOME + '/.bitcoin/debug.log',
-    pid: process.env.HOME + '/.bitcoin/bitcoind.pid'
-  },
-  litecoin: {
-    name: 'litecoin',
-    daemon: 'litecoind',
-    config: process.env.HOME + '/.litecoin/litecoin.conf',
-    wallet: process.env.HOME + '/.litecoin/wallet.dat',
-    log: process.env.HOME + '/.litecoin/debug.log',
-    pid: process.env.HOME + '/.litecoind/litecoind.pid'
-  },
-  dogecoin: {
-    name: 'dogecoin',
-    daemon: 'dogecoind',
-    config: process.env.HOME + '/.dogecoin/dogecoin.conf',
-    wallet: process.env.HOME + '/.dogecoin/wallet.dat',
-    log: process.env.HOME + '/.dogecoin/debug.log',
-    pid: process.env.HOME + '/.dogecoin/dogecoind.pid'
-  },
-  namecoin: {
-    name: 'namecoin',
-    daemon: 'namecoind',
-    config: process.env.HOME + '/.namecoin/namecoin.conf',
-    wallet: process.env.HOME + '/.namecoin/wallet.dat',
-    log: process.env.HOME + '/.namecoin/debug.log',
-    pid: process.env.HOME + '/.namecoin/namecoind.pid'
-  },
-  coinyecoin: {
-    name: 'coinyecoin',
-    daemon: 'coinyecoind',
-    config: process.env.HOME + '/.coinyecoin/coinyecoin.conf',
-    wallet: process.env.HOME + '/.coinyecoin/wallet.dat',
-    log: process.env.HOME + '/.coinyecoin/debug.log',
-    pid: process.env.HOME + '/.coinyecoin/coinyecoind.pid'
-  },
-  unknown: function(name) {
-    return {
-      name: name,
-      daemon: name + 'd',
-      config: process.env.HOME + '/.' + name + '/' + name + '.conf',
-      wallet: process.env.HOME + '/.' + name + '/wallet.dat',
-      log: process.env.HOME + '/.' + name + '/debug.log',
-      pid: process.env.HOME + '/.' + name + '/' + name + 'd.pid'
-    };
-  }
-};
+function getPlatform(opt) {
+  var name = opt.currency || 'bitcoin';
+  var dir = opt.datadir || process.env.HOME + '/.' + name;
+  return {
+    name: name,
+    daemon: name + 'd',
+    config: dir + '/' + name + '.conf',
+    wallet: dir + '/wallet.dat',
+    log: dir + '/debug.log',
+    pid: dir + '/' + name + 'd.pid'
+  };
+}
 
 function readConf() {
   var data;
@@ -92,7 +56,7 @@ function readConf() {
   try {
     data = fs.readFileSync(platform.config, 'utf8');
   } catch (e) {
-    return;
+    return {};
   }
 
   data = data.trim().split(/(\r?\n)+/);
@@ -2227,8 +2191,7 @@ function tailBox(file, box) {
 function parseArg(argv) {
   var argv = argv.slice(2)
     , options = {}
-    , files = []
-    , name;
+    , files = [];
 
   function getarg() {
     var arg = argv.shift();
@@ -2263,8 +2226,7 @@ function parseArg(argv) {
     switch (arg) {
       case '-c':
       case '--currency':
-        name = argv.shift();
-        platform = coins[name] || coins.unknown(name);
+        options.currency = argv.shift();
         break;
       case '-s':
       case '--server':
@@ -2300,8 +2262,8 @@ function parseArg(argv) {
     }
   }
 
-  if (!platform) {
-    platform = coins.bitcoin;
+  if (!options.currency) {
+    options.currency = 'bitcoin';
   }
 
   return options;
@@ -2312,10 +2274,7 @@ function help() {
   return process.exit(0);
 }
 
-function main(argv, callback) {
-  opt = parseArg(argv);
-  config = readConf() || {};
-
+function main(callback) {
   if (opt.host
       && opt.host !== 'localhost'
       && opt.host !== '127.0.0.1'
@@ -2485,10 +2444,6 @@ function tsort(obj, desc) {
   });
 }
 
-var http = require('http');
-var StringDecoder = require('string_decoder').StringDecoder;
-var qs = require('querystring');
-
 function request(options, callback) {
   if (typeof options === 'string' || options.hostname) {
     options = { uri: options };
@@ -2584,7 +2539,7 @@ function request(options, callback) {
 
 if (!module.parent) {
   process.title = 'termcoin';
-  main(process.argv.slice(), function(err) {
+  main(function(err) {
     if (err) throw err;
     return process.exit(0);
   });
