@@ -54,7 +54,7 @@ function readConf() {
   var data;
 
   try {
-    data = fs.readFileSync(platform.config, 'utf8');
+    data = fs.readFileSync(platform.config, 'ascii');
   } catch (e) {
     return {};
   }
