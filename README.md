@@ -2,8 +2,8 @@
 
 A bitcoin wallet for your terminal.
 
-termcoin is written in node.js and uses bitcoind (and optionally other
-cryptocurrency rpc servers) as its backend.
+termcoin is written in node.js, using [blessed][1], and uses bitcoind (and
+optionally other cryptocurrency rpc servers) as its backend.
 
 ## Screenshots
 
@@ -30,7 +30,7 @@ $ termcoin
 ```
 
 termcoin by default tries to connect to the bitcoin rpc server in
-~/.bitcoin/bitcoin.conf, but it can also be specified directly:
+`~/.bitcoin/bitcoin.conf`, but it can also be specified directly:
 
 ``` bash
 $ termcoin http://bitcoinrpc:foobar@localhost:8332/
@@ -58,6 +58,7 @@ this entirely in node.
 
 ## External Dependencies
 
+- **bitcoind** - json-rpc server
 - **qrencode** - for QR codes rendered in your terminal.
 - **xsel/xclip** - clipboard support for X11.
 - **pbcopy** - clipboard support for OSX.
@@ -73,3 +74,5 @@ all code is your original work. `</legalese>`
 Copyright (c) 2014, Christopher Jeffrey. (MIT License)
 
 See LICENSE for more info.
+
+[1]: https://github.com/chjj/blessed

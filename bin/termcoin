@@ -54,7 +54,7 @@ function readConf() {
   var data;
 
   try {
-    data = fs.readFileSync(platform.config, 'ascii');
+    data = fs.readFileSync(platform.config, 'utf8');
   } catch (e) {
     return {};
   }
@@ -116,7 +116,7 @@ function getAddresses(accounts, callback) {
     , m;
 
   try {
-    wallet = fs.readFileSync(platform.wallet, 'utf8');
+    wallet = fs.readFileSync(platform.wallet, 'ascii');
   } catch (e) {
     return callback(null, results);
   }
