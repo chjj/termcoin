@@ -139,7 +139,7 @@ function getStats(callback) {
 
 // Ridiculous workaround:
 function getAddresses(accounts, callback) {
-  if (opt.host) return callback(null, []);
+  if (opt.remote) return callback(null, []);
 
   if (!callback) {
     callback = accounts;
@@ -368,7 +368,7 @@ function move(from, to, amount, callback) {
 }
 
 function startServer(callback) {
-  if (opt.host) return callback();
+  if (opt.remote) return callback();
 
   try {
     fs.statSync(platform.pid);
@@ -1504,7 +1504,7 @@ function start(stats, callback) {
             screen.render();
             return encryptWallet(passphrase, function(err) {
               if (err) return screen._.msg.error(err.message);
-              if (opt.host) {
+              if (opt.remote) {
                 return screen._.msg.display('Wallet is now encrypted.');
               }
               client.lock = true;
@@ -2093,6 +2093,8 @@ function copy(text, callback) {
     ps.stdin.end(text + '');
   }
 
+  if (opt.remote) return callback();
+
   // X11:
   return exec(['xsel', '-i', '-p'], function(err) {
     if (!err) return callback(null);
@@ -2313,6 +2315,13 @@ function help() {
 function main(argv, callback) {
   opt = parseArg(argv);
   config = readConf() || {};
+
+  if (opt.host
+      && opt.host !== 'localhost'
+      && opt.host !== '127.0.0.1'
+      && opt.host !== '::1') {
+    opt.remote = true;
+  }
 
   config.rpcconnect = opt.host || config.rpcconnect || 'localhost';
   config.rpcport = opt.port || config.rpcport || 8332;
