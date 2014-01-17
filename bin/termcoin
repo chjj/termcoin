@@ -357,7 +357,14 @@ function startServer(callback) {
     '-rpcpassword=' + config.rpcpassword,
     '-rpcport=' + config.rpcport,
     '-rpcallowip=127.0.0.1'
-  ].join(' ');
+  ];
+
+  if (opt.datadir) {
+    cmd.push('-datadir=' + opt.datadir);
+    cmd.push('-conf=' + platform.config);
+  }
+
+  cmd = cmd.join(' ');
 
   return cp.exec('(setsid ' + cmd + ' > /dev/null 2>& 1 &)', function(err) {
     if (err) return callback(err);
@@ -2039,7 +2046,7 @@ function copy(text, callback) {
       // Mac:
       return exec(['pbcopy'], function(err) {
         if (!err) return callback(null);
-        return callback(new Error('Failed to get clipboard contents.'));
+        return callback(new Error('Failed to set clipboard contents.'));
       });
     });
   });

@@ -56,6 +56,12 @@ to have all the capabilities of a full wallet, but that would require, for
 example, linking to to berkeley db to parse the wallet.dat. I wanted to write
 this entirely in node.
 
+## External Dependencies
+
+- **qrencode** - for QR codes rendered in your terminal.
+- **xsel/xclip** - clipboard support for X11.
+- **pbcopy** - clipboard support for OSX.
+
 ## Contribution and License Agreement
 
 If you contribute code to this project, you are implicitly allowing your code
