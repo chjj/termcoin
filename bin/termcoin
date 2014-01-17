@@ -859,9 +859,9 @@ function start(stats, callback) {
 
       var sendTo = function(callback) {
         if (data.from) {
-          return sendFrom(data.from, data.address, +data.amout, callback);
+          return sendFrom(data.from, data.address, +data.amount, callback);
         }
-        return send(data.address, +data.amout, callback);
+        return send(data.address, +data.amount, callback);
       };
 
       return sendTo(function(err, result) {
