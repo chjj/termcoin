@@ -2040,7 +2040,7 @@ function help() {
 
 function main(argv, callback) {
   opt = parseArg(argv);
-  config = readConf();
+  config = readConf() || {};
 
   config.rpcconnect = opt.host || config.rpcconnect || 'localhost';
   config.rpcport = opt.port || config.rpcport || 8332;
