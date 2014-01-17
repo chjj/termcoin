@@ -850,12 +850,12 @@ function start(stats, callback) {
         return send(data.address, +data.amount, callback);
       };
 
-      return checkLabel(function(err) {
-        return sendTo(function(err, result) {
-          if (err) return screen._.msg.error(err.message);
-          if (!result || !Object.keys(result).length) {
-            return screen._.msg.error('Transaction not completed.');
-          }
+      return sendTo(function(err, result) {
+        if (err) return screen._.msg.error(err.message);
+        if (!result || !Object.keys(result).length) {
+          return screen._.msg.error('Transaction not completed.');
+        }
+        return checkLabel(function(err) {
           screen._.msg.display(
             'Transaction completed successfully: '
             + result.txid + '.');
@@ -1046,8 +1046,7 @@ function start(stats, callback) {
         // XXX Fix this in blessed - shouldn't have to do this:
         screen.emit('keypress', '2', { name: '2' });
         tabs.send._.from.setValue(address);
-        //tabs.send._.address.focus();
-        tabs.send._.form.focusNext();
+        tabs.send._.form.focusFirst();
         screen.render();
         return;
       }
@@ -1353,8 +1352,7 @@ function start(stats, callback) {
         // XXX Fix this in blessed - shouldn't have to do this:
         screen.emit('keypress', '2', { name: '2' });
         tabs.send._.address.setValue(address);
-        //tabs.send._.address.focus();
-        tabs.send._.form.focusNext();
+        tabs.send._.form.focusFirst();
         screen.render();
         return;
       }
