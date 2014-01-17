@@ -1,0 +1,56 @@
+.ds q \N'34'
+.TH termcoin 1 "2014-01-17" "v0.0.0" "termcoin"
+
+.SH NAME
+termcoin \- a bitcoin wallet for your terminal
+
+.SH SYNOPSIS
+.B termcoin
+[\-c \fI<currency>\fP] [\-s \fI<server>\fP] [\-d \fI<datadir>\fP]
+[\-\-help] [\-\-mock] [\-\-debug] [\fIserver\fP]
+
+.SH DESCRIPTION
+.B termcoin
+is written in node.js and uses bitcoind (and optionally other
+cryptocurrency rpc servers) as its backend.
+
+.SH EXAMPLES
+.TP
+termcoin http://bitcoinrpc:foobar@localhost:8332/
+.TP
+termcoin -c litecoin
+
+.SH OPTIONS
+.TP
+.BI \-c,\ \-\-currency\ [\fIcurrency\fP]
+Specify the cryptocurrency.
+.TP
+.BI \-s,\ \-\-server\ [\fIserver\fP]
+Specify the json-rpc server URL.
+.TP
+.BI \-d,\ \-\-datadir\ [\fIdatadir\fP]
+Specify the directory containing the config, wallet, etc.
+.TP
+.BI \-h,\ \-\-help
+Display help information.
+.TP
+.BI \-\-debug
+Enable debug features.
+.TP
+.BI \-\-mock
+Enable mock data.
+
+.SH CONFIGURATION
+termcoin abides by ~/.${currency}/${currency}.conf for the starting of the
+server (if one is not already specified or running).
+
+.SH BUGS
+Please report any bugs to https://github.com/chjj/termcoin.
+
+.SH LICENSE
+Copyright (c) 2014, Christopher Jeffrey (MIT License).
+
+.SH "SEE ALSO"
+.BR bitcoind(1),
+.BR bitcoin-qt(1),
+.BR qrencode(1)

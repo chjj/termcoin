@@ -2214,6 +2214,10 @@ function parseArg(argv) {
         options.password = options.server.password;
         options.ssl = options.server.protocol === 'https:';
         break;
+      case '-d':
+      case '--datadir':
+        options.datadir = argv.shift();
+        break;
       case '-h':
       case '--help':
         return help();
