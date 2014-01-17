@@ -547,60 +547,6 @@ function start(stats, callback) {
     });
   })();
 
-  // tabs.overview._.backup = blessed.button({
-  //   parent: tabs.overview,
-  //   bottom: 0,
-  //   right: 3,
-  //   height: 'shrink',
-  //   width: 'shrink',
-  //   content: 'Backup Wallet',
-  //   tags: true,
-  //   border: 'line',
-  //   mouse: true,
-  //   keys: true,
-  //   style: {
-  //     fg: 'default',
-  //     bg: 'blue',
-  //     hover: {
-  //       bg: 'lightblack'
-  //     },
-  //     border: {
-  //       bg: 'blue'
-  //     }
-  //   }
-  // });
-
-  function backup() {
-    return screen._.prompt.type('Save to:', process.env.HOME, function(err, value) {
-      if (err) {
-        screen.render();
-        return screen._.msg.error(err.message);
-      }
-      if (value == null) {
-        screen.render();
-        return;
-      }
-      var stat;
-      try {
-        stat = fs.statSync(value);
-      } catch (e) {
-        ;
-      }
-      if (stat && stat.isDirectory()) {
-        value = value.replace(/\/+$/, '') + '/wallet.dat.bak';
-      }
-      return backupWallet(value, function(err) {
-        if (err) return screen._.msg.error(err.messsage);
-        screen._.msg.display('Wallet successfully backed up.');
-        screen.render();
-      });
-    });
-  }
-
-  // tabs.overview._.backup.on('press', function() {
-  //   backup();
-  // });
-
   /**
    * Send
    */
@@ -1492,7 +1438,30 @@ function start(stats, callback) {
     }
 
     if (text === 'Backup Wallet') {
-      return backup();
+      return screen._.prompt.type('Save to:', process.env.HOME + '/', function(err, value) {
+        if (err) {
+          screen.render();
+          return screen._.msg.error(err.message);
+        }
+        if (value == null) {
+          screen.render();
+          return;
+        }
+        var stat;
+        try {
+          stat = fs.statSync(value);
+        } catch (e) {
+          ;
+        }
+        if (stat && stat.isDirectory()) {
+          value = value.replace(/\/+$/, '') + '/wallet.dat.bak';
+        }
+        return backupWallet(value, function(err) {
+          if (err) return screen._.msg.error(err.messsage);
+          screen._.msg.display('Wallet successfully backed up.');
+          screen.render();
+        });
+      });
     }
 
     if (text === 'Verify Message Signature') {
