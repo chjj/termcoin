@@ -834,7 +834,7 @@ function start(stats, callback) {
       return out;
     }, {});
 
-    // XXX Own
+    // Own addresses: for 'move' calls.
     alias = Object.keys(stats.accounts).reduce(function(out, key) {
       out[stats.accounts[key].name] = stats.accounts[key];
       return out;
@@ -844,21 +844,18 @@ function start(stats, callback) {
       data.address = alias[data.address].address;
     }
 
-    // XXX Own
-    /*
-    var method;
-    if (stats.accounts[data.address]) {
-      method = move;
-    } else {
-      method = send;
+    if (data.address && stats.accounts[data.address]) {
+      data.move = true;
     }
-    */
 
     return checkEncrypt(function(err) {
       if (err) return screen._.msg.error(err.message);
 
       var sendTo = function(callback) {
         if (data.from) {
+          if (data.move) {
+            return move(data.from, data.address, +data.amount);
+          }
           return sendFrom(data.from, data.address, +data.amount, callback);
         }
         return send(data.address, +data.amount, callback);
