@@ -981,49 +981,26 @@ function start(stats, callback) {
     }
 
     screen._.picker.setItems([
+      'Copy Address',
+      'Copy Label',
+      'Rename',
+      'Delete',
+      '-',
+      'Send From',
       'Show QR Code',
       'Save QR Code PNG',
-      'Send From',
-      'Rename',
-      'Delete'
+      'Sign Message'
     ]);
 
     return screen._.picker.pick(function(err, option) {
       if (err) return screen._.msg.error(err.message);
 
-      if (option === 'Show QR Code') {
-        return cp.execFile('qrencode', ['-t', 'ANSI256', address], function(err, stdout, stderr) {
-          if (err) {
-            return screen._.msg.error('qrencode not found. Please install it.');
-          }
-          screen._.box._.show(stdout.trim());
-        });
+      if (option === 'Copy Address') {
+        return copy(address);
       }
 
-      if (option === 'Save QR Code PNG') {
-        return screen._.prompt.type('Save to:', process.env.HOME + '/', function(err, file) {
-          if (err) return screen._.msg.error(err.message);
-          return cp.execFile('qrencode', ['-t', 'PNG', '-o', file, address], function(err, stdout, stderr) {
-            if (err) {
-              return screen._.msg.error('qrencode not found. Please install it.');
-            }
-            return screen._.msg.display('Successfully saved file.');
-          });
-        });
-      }
-
-      if (option === 'Send From') {
-        tabs.send._.submit.rtop = 8;
-        tabs.send._.note.rtop = 10;
-        tabs.send._.ftext.show();
-        tabs.send._.from.show();
-        // XXX Fix this in blessed - shouldn't have to do this:
-        screen.emit('keypress', '2', { name: '2' });
-        tabs.send._.from.setValue(address);
-        //tabs.send._.address.focus();
-        tabs.send._.form.focusNext();
-        screen.render();
-        return;
+      if (option === 'Copy Label') {
+        return copy(label);
       }
 
       if (option === 'Rename') {
@@ -1050,6 +1027,61 @@ function start(stats, callback) {
 
       if (option === 'Delete') {
         return deleteAddress();
+      }
+
+      if (option === 'Send From') {
+        tabs.send._.submit.rtop = 8;
+        tabs.send._.note.rtop = 10;
+        tabs.send._.ftext.show();
+        tabs.send._.from.show();
+        // XXX Fix this in blessed - shouldn't have to do this:
+        screen.emit('keypress', '2', { name: '2' });
+        tabs.send._.from.setValue(address);
+        //tabs.send._.address.focus();
+        tabs.send._.form.focusNext();
+        screen.render();
+        return;
+      }
+
+      if (option === 'Show QR Code') {
+        var code = 'bitcoin:' + address + '?label=' + label;
+        // TODO: Add prompt for an optional message:
+        //+ '&message=' + message;
+        return cp.execFile('qrencode', ['-t', 'ANSI256', code], function(err, stdout, stderr) {
+          if (err) {
+            return screen._.msg.error('qrencode not found. Please install it.');
+          }
+          screen._.box._.show(stdout.trim());
+        });
+      }
+
+      if (option === 'Save QR Code PNG') {
+        return screen._.prompt.type('Save to:', process.env.HOME + '/', function(err, file) {
+          if (err) return screen._.msg.error(err.message);
+          var code = 'bitcoin:' + address + '?label=' + label;
+          // TODO: Add prompt for an optional message:
+          //+ '&message=' + message;
+          return cp.execFile('qrencode', ['-t', 'PNG', '-o', file, code], function(err, stdout, stderr) {
+            if (err) {
+              return screen._.msg.error('qrencode not found. Please install it.');
+            }
+            return screen._.msg.display('Successfully saved file.');
+          });
+        });
+      }
+
+      if (option === 'Sign Message') {
+        // XXX Fix this in blessed - shouldn't have to do this:
+        screen.emit('keypress', '6', { name: '2' });
+        tabs.misc._.list.select(3);
+        tabs.misc._.list.emit('keypress', '\r', { name: 'enter' });
+        var i = screen._.picker.ritems.indexOf(address);
+        if (!~i) i = screen._.picker.ritems.indexOf(label);
+        if (!~i) return;
+        screen._.picker.select(i);
+        screen._.picker.emit('keypress', '\r', { name: 'enter' });
+        screen.render();
+        return;
       }
     });
   });
@@ -1126,17 +1158,49 @@ function start(stats, callback) {
     var parts = el.getText().trim().split(/\s*\|\s*/)
       , id = parts[0];
 
-    var getTransaction = function(id, callback) {
-      if (opt.mock) {
-        return callback(null, mock.transaction);
-      }
-      return client.call('gettransaction', [id], callback);
-    };
+    var tx = tsort(stats.transactions)[index];
 
-    return getTransaction(id, function(err, transaction) {
-      if (err) return;
-      var text = inspect(transaction);
-      tabs.transactions._.msg.display(text, -1);
+    screen._.picker.setItems([
+      'Copy Address',
+      'Copy Label',
+      'Copy Amount',
+      'Edit Label',
+      'Details'
+    ]);
+
+    return screen._.picker.pick(function(err, option) {
+      if (err) return screen._.msg.error(err.message);
+
+      if (option === 'Copy Address') {
+        return copy(tx.address);
+      }
+
+      if (option === 'Copy Label') {
+        return copy(tx.label);
+      }
+
+      if (option === 'Copy Amount') {
+        return copy(tx.amount + '');
+      }
+
+      if (option === 'Edit Label') {
+        return;
+      }
+
+      if (option === 'Details') {
+        var getTransaction = function(id, callback) {
+          if (opt.mock) {
+            return callback(null, mock.transaction);
+          }
+          return client.call('gettransaction', [id], callback);
+        };
+
+        return getTransaction(id, function(err, transaction) {
+          if (err) return;
+          var text = inspect(transaction);
+          tabs.transactions._.msg.display(text, -1);
+        });
+      }
     });
   });
 
@@ -1177,6 +1241,10 @@ function start(stats, callback) {
   });
 
   tabs.addresses._.list.key('d', function() {
+    deleteSendAddress();
+  });
+
+  function deleteSendAddress() {
     var list = tabs.addresses._.list
       , el = list.items[list.selected];
 
@@ -1199,7 +1267,7 @@ function start(stats, callback) {
         refresh();
       });
     });
-  });
+  }
 
   tabs.addresses._.list.on('select', function(el, index) {
     var parts = el.getText().trim().split(/\s+/)
@@ -1227,23 +1295,101 @@ function start(stats, callback) {
       });
     }
 
-    text = 'Label for {blue-fg}' + address + '{/blue-fg}:';
-    return screen._.prompt.type(text, label, function(err, newLabel) {
+    screen._.picker.setItems([
+      'Copy Address',
+      'Copy Label',
+      'Rename',
+      'Delete',
+      '-',
+      'Send Coins',
+      'Show QR Code',
+      'Save QR Code PNG',
+      'Verify Message'
+    ]);
+
+    return screen._.picker.pick(function(err, option) {
       if (err) return screen._.msg.error(err.message);
-      if (!newLabel) return screen.render();
 
-      return screen._.msg.error('Not supported.');
+      if (option === 'Copy Address') {
+        return copy(address);
+      }
 
-      // For some reason this *creates* a receivable address by the same
-      // account name, but different address.
-      return client.call('setaccount', [address, newLabel], function(err) {
-        if (err) return screen._.msg.error(err.message);
-        text = 'Edited label: {blue-fg}'
-          + label + '->' + (newLabel || '[none]') + '{/blue-fg}';
-        screen._.msg.display(text);
+      if (option === 'Copy Label') {
+        return copy(label);
+      }
+
+      if (option === 'Rename') {
+        text = 'Label for {blue-fg}' + address + '{/blue-fg}:';
+        return screen._.prompt.type(text, label, function(err, newLabel) {
+          if (err) return screen._.msg.error(err.message);
+          if (!newLabel) return screen.render();
+
+          return screen._.msg.error('Not supported.');
+
+          // For some reason this *creates* a receivable address by the same
+          // account name, but different address.
+          return client.call('setaccount', [address, newLabel], function(err) {
+            if (err) return screen._.msg.error(err.message);
+            text = 'Edited label: {blue-fg}'
+              + label + '->' + (newLabel || '[none]') + '{/blue-fg}';
+            screen._.msg.display(text);
+            screen.render();
+            refresh();
+          });
+        });
+      }
+
+      if (option === 'Delete') {
+        return deleteSendAddress();
+      }
+
+      if (option === 'Send Coins') {
+        // XXX Fix this in blessed - shouldn't have to do this:
+        screen.emit('keypress', '2', { name: '2' });
+        tabs.send._.address.setValue(address);
+        //tabs.send._.address.focus();
+        tabs.send._.form.focusNext();
         screen.render();
-        refresh();
-      });
+        return;
+      }
+
+      if (option === 'Show QR Code') {
+        var code = 'bitcoin:' + address + '?label=' + label;
+        // TODO: Add prompt for an optional message:
+        //+ '&message=' + message;
+        return cp.execFile('qrencode', ['-t', 'ANSI256', code], function(err, stdout, stderr) {
+          if (err) {
+            return screen._.msg.error('qrencode not found. Please install it.');
+          }
+          screen._.box._.show(stdout.trim());
+        });
+      }
+
+      if (option === 'Save QR Code PNG') {
+        return screen._.prompt.type('Save to:', process.env.HOME + '/', function(err, file) {
+          if (err) return screen._.msg.error(err.message);
+          var code = 'bitcoin:' + address + '?label=' + label;
+          // TODO: Add prompt for an optional message:
+          //+ '&message=' + message;
+          return cp.execFile('qrencode', ['-t', 'PNG', '-o', file, code], function(err, stdout, stderr) {
+            if (err) {
+              return screen._.msg.error('qrencode not found. Please install it.');
+            }
+            return screen._.msg.display('Successfully saved file.');
+          });
+        });
+      }
+
+      if (option === 'Verify Message') {
+        // XXX Fix this in blessed - shouldn't have to do this:
+        screen.emit('keypress', '6', { name: '2' });
+        tabs.misc._.list.select(2);
+        tabs.misc._.list.emit('keypress', '\r', { name: 'enter' });
+        screen._.prompt._.input.setValue(address);
+        screen._.prompt._.input.emit('keypress', '\r', { name: 'enter' });
+        screen.render();
+        return;
+      }
     });
   });
 
@@ -1808,6 +1954,36 @@ function start(stats, callback) {
   });
 
   screen.render();
+}
+
+function copy(text, callback) {
+  var callback = callback || function() {};
+
+  function exec(args) {
+    var file = args.shift();
+    var ps = cp.spawn(file, args, {
+      stdio: ['pipe', 'ignore', 'ignore']
+    });
+    ps.stdin.on('error', callback);
+    ps.on('error', callback);
+    ps.on('exit', function(code) {
+      return callback(code !== 0 ? new Error('Exit code: ' + code) : null);
+    });
+    ps.stdin.end(text + '');
+  }
+
+  // X11:
+  return exec(['xsel', '-i', '-p'], function(err) {
+    if (!err) return callback(null);
+    return exec(['xclip', '-i', '-selection', 'primary'], function(err) {
+      if (!err) return callback(null);
+      // Mac:
+      return exec(['pbcopy'], function(err) {
+        if (!err) return callback(null);
+        return callback(new Error('Failed to get clipboard contents.'));
+      });
+    });
+  });
 }
 
 // `tail -f` a file.
