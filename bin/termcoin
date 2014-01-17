@@ -835,6 +835,11 @@ function start(stats, callback) {
     return checkEncrypt(function(err) {
       if (err) return screen._.msg.error(err.message);
 
+      var checkLabel = function(callback) {
+        if (!data.label) return callback();
+        return client.call('setaccount', [data.address, data.label], callback);
+      };
+
       var sendTo = function(callback) {
         if (data.from) {
           if (data.move) {
@@ -845,12 +850,16 @@ function start(stats, callback) {
         return send(data.address, +data.amount, callback);
       };
 
-      return sendTo(function(err, result) {
-        if (err) return screen._.msg.error(err.message);
-        if (!result || !Object.keys(result).length) {
-          return screen._.msg.error('Transaction not completed.');
-        }
-        screen._.msg.display('Transaction completed successfully: ' + result.txid + '.');
+      return checkLabel(function(err) {
+        return sendTo(function(err, result) {
+          if (err) return screen._.msg.error(err.message);
+          if (!result || !Object.keys(result).length) {
+            return screen._.msg.error('Transaction not completed.');
+          }
+          screen._.msg.display(
+            'Transaction completed successfully: '
+            + result.txid + '.');
+        });
       });
     });
   });
@@ -1051,7 +1060,7 @@ function start(stats, callback) {
           if (err) {
             return screen._.msg.error('qrencode not found. Please install it.');
           }
-          screen._.box._.show(stdout.trim());
+          screen._.qrbox._.show(stdout.trim());
         });
       }
 
@@ -1155,9 +1164,6 @@ function start(stats, callback) {
   });
 
   tabs.transactions._.list.on('select', function(el, index) {
-    var parts = el.getText().trim().split(/\s*\|\s*/)
-      , id = parts[0];
-
     var tx = tsort(stats.transactions)[index];
 
     screen._.picker.setItems([
@@ -1172,7 +1178,7 @@ function start(stats, callback) {
       if (err) return screen._.msg.error(err.message);
 
       if (option === 'Copy Address') {
-        return copy(tx.address);
+        return copy(tx.address || tx.otheraccount);
       }
 
       if (option === 'Copy Label') {
@@ -1195,8 +1201,8 @@ function start(stats, callback) {
           return client.call('gettransaction', [id], callback);
         };
 
-        return getTransaction(id, function(err, transaction) {
-          if (err) return;
+        return getTransaction(tx.txid, function(err, transaction) {
+          if (err) return screen._.msg.error(err.message);
           var text = inspect(transaction);
           tabs.transactions._.msg.display(text, -1);
         });
@@ -1361,7 +1367,7 @@ function start(stats, callback) {
           if (err) {
             return screen._.msg.error('qrencode not found. Please install it.');
           }
-          screen._.box._.show(stdout.trim());
+          screen._.qrbox._.show(stdout.trim());
         });
       }
 
@@ -1742,10 +1748,10 @@ function start(stats, callback) {
   });
 
   /**
-   * Big Box
+   * QR Box
    */
 
-  screen._.box = blessed.box({
+  screen._.qrbox = blessed.box({
     parent: screen,
     scrollable: true,
     alwaysScroll: true,
@@ -1756,7 +1762,8 @@ function start(stats, callback) {
 
     top: 1,
     bottom: 1,
-    width: 80,
+    width: 80 + 6,
+    //width: 'shrink',
     left: 'center',
     border: 'line',
 
@@ -1775,16 +1782,16 @@ function start(stats, callback) {
     }
   });
 
-  screen._.box._.show = function(content) {
+  screen._.qrbox._.show = function(content) {
     screen.saveFocus();
-    screen._.box.focus();
-    screen._.box.setContent(content);
-    screen._.box.show();
+    screen._.qrbox.focus();
+    screen._.qrbox.setContent(content);
+    screen._.qrbox.show();
     screen.render();
   };
 
-  screen._.box.key(['q', 'escape'], function() {
-    screen._.box.hide();
+  screen._.qrbox.key(['q', 'escape'], function() {
+    screen._.qrbox.hide();
     screen.restoreFocus();
     screen.render();
   });
