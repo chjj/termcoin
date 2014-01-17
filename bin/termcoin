@@ -146,23 +146,36 @@ function getAddresses(accounts, callback) {
     accounts = null;
   }
 
-  var wallet = fs.readFileSync(platform.wallet, 'utf8')
-    , m = wallet.match(/[a-zA-Z0-9]{34}/g)
-    , results = [];
+  var wallet
+    , results = []
+    , ma = []
+    , m;
 
-  // XXX Slower, but better
-  var s = wallet, ma = [];
+  try {
+    wallet = fs.readFileSync(platform.wallet, 'utf8');
+  } catch (e) {
+    return callback(null, results);
+  }
+
+  // Bitcoin addresses are 27-35 bytes in length.
+  // https://bitcointalk.org/index.php?topic=1026.0
   do {
-    m = /^[a-zA-Z0-9]{34}/g.exec(s);
-    if (m) ma.push(m[0]);
-  } while (s = s.substring(1));
-  if (!ma.length) ma = null;
-  m = ma;
-  // END
+    if (m = /^[a-zA-Z1-9]{27}/g.exec(wallet)) ma.push(m[0]);
+    if (m = /^[a-zA-Z1-9]{28}/g.exec(wallet)) ma.push(m[0]);
+    if (m = /^[a-zA-Z1-9]{29}/g.exec(wallet)) ma.push(m[0]);
+    if (m = /^[a-zA-Z1-9]{30}/g.exec(wallet)) ma.push(m[0]);
+    if (m = /^[a-zA-Z1-9]{31}/g.exec(wallet)) ma.push(m[0]);
+    if (m = /^[a-zA-Z1-9]{32}/g.exec(wallet)) ma.push(m[0]);
+    if (m = /^[a-zA-Z1-9]{33}/g.exec(wallet)) ma.push(m[0]);
+    if (m = /^[a-zA-Z1-9]{34}/g.exec(wallet)) ma.push(m[0]);
+    if (m = /^[a-zA-Z1-9]{35}/g.exec(wallet)) ma.push(m[0]);
+  } while (wallet = wallet.substring(1));
 
-  if (!m) return callback(null, results);
+  if (!ma.length) {
+    return callback(null, results);
+  }
 
-  return forEach(m, function(address, next) {
+  return forEach(ma, function(address, next) {
     return client.call('getaccount', [address], function(err, name) {
       if (err) return next();
       results.push({
@@ -200,9 +213,7 @@ function getAccounts(callback) {
   return client.call('listaccounts', function(err, accounts) {
     if (err) return callback(err);
     return forEach(Object.keys(accounts), function(name, next) {
-      //return client.call('getaccountaddress', [name], function(err, address) {
-      //  if (err) return next();
-      //  address = [addresss];
+      // return client.call('getaccountaddress', [name], function(err, address) {
       return client.call('getaddressesbyaccount', [name], function(err, address) {
         if (err) return next();
         address.forEach(function(address) {
@@ -293,8 +304,6 @@ function verifyMessage(address, sig, message, callback) {
 }
 
 function createAddress(name, callback) {
-  //return client.call('setaccount', [address, value], function(err) {
-  //return client.call('getaccountaddress', [name], callback);
   return client.call('getnewaddress', [name], callback);
 }
 
@@ -358,28 +367,6 @@ function move(from, to, amount, callback) {
   return client.call('move', [from, to, amount], callback);
 }
 
-function startServer_(callback) {
-  return callback();
-  if (opt.host) return callback();
-  console.log('Stopping existing server.');
-  return cp.execFile(platform.daemon, ['stop'], function(err) {
-    if (err) return callback(err);
-    console.log('Starting new server.');
-    var args = [
-      '-server',
-      '-daemon',
-      '-rpcuser=' + config.rpcuser,
-      '-rpcpassword=' + config.rpcpassword,
-      '-rpcport=' + config.rpcport,
-      '-rpcallowip=127.0.0.1'
-    ];
-    return cp.execFile(platform.daemon, args, function(err) {
-      if (err) return callback(err);
-      return callback();
-    });
-  });
-}
-
 function startServer(callback) {
   if (opt.host) return callback();
 
@@ -390,12 +377,9 @@ function startServer(callback) {
     ;
   }
 
-  //console.log('Stopping existing server.');
-  //return cp.exec('(setsid ' + platform.daemon + ' stop > /dev/null 2>& 1 &)', function(err) {
-  //if (err) return callback(err);
-
-  if (!client) {
-    console.log('Starting new server.');
+  if (!startServer.started) {
+    startServer.started = true;
+    console.log('Starting new server...');
   }
 
   var cmd = [
@@ -412,7 +396,7 @@ function startServer(callback) {
     if (err) return callback(err);
     return setTimeout(function() {
       return callback();
-    }, 12000);
+    }, 12 * 1000);
   });
 }
 
@@ -962,11 +946,10 @@ function start(stats, callback) {
       if (err) return screen._.msg.error(err.message);
       if (!value) return screen.render();
 
-      // return screen._.msg.error('Not supported.');
+      return screen._.msg.error('Not supported.');
 
-      // XXX Not working:
-      // return client.call('setaccount', [address], function(err) {
-      return process.nextTick(function(err) {
+      // Does not delete.
+      return client.call('setaccount', [address], function(err) {
         if (err) return screen._.msg.error(err.message);
         text = 'Deleted address: {blue-fg}' + address + '{/blue-fg}';
         screen._.msg.display(text);
@@ -1045,19 +1028,19 @@ function start(stats, callback) {
 
       if (option === 'Rename') {
         text = 'Label for {blue-fg}' + address + '{/blue-fg}:';
-        return screen._.prompt.type(text, '', function(err, value) {
+        return screen._.prompt.type(text, '', function(err, newLabel) {
           if (err) return screen._.msg.error(err.message);
 
-          //value = value || '';
-          if (value == null) return screen.render();
-          // return screen._.msg.error('Not supported.');
+          return screen._.msg.error('Not supported.');
 
-          // XXX Not working:
-          // return client.call('setaccount', [address, value], function(err) {
-          return process.nextTick(function(err) {
+          newLabel = newLabel || '';
+
+          // Does not associate address with new account name, just creates a
+          // new account with a new address.
+          return client.call('setaccount', [address, newLabel], function(err) {
             if (err) return screen._.msg.error(err.message);
             text = 'Edited label: {blue-fg}'
-              + label + '->' + (value || '[none]') + '{/blue-fg}';
+              + label + '->' + (newLabel || '[none]') + '{/blue-fg}';
             screen._.msg.display(text);
             screen.render();
             refresh();
@@ -1205,13 +1188,10 @@ function start(stats, callback) {
       if (err) return screen._.msg.error(err.message);
       if (!value) return screen.render();
 
-      // return screen._.msg.error('Not supported.');
+      return screen._.msg.error('Not supported.');
 
-      // XXX Not working:
-      // NOTE: This won't work since the rpc server doesn't expose the send addresses.
-      // return client.call('setaccount', [address], function(err) {
-      // Should look like: return client.call('setaddresspageaccount', [address], function(err) {
-      return process.nextTick(function(err) {
+      // Does not delete.
+      return client.call('setaccount', [address], function(err) {
         if (err) return screen._.msg.error(err.message);
         text = 'Deleted address: {blue-fg}' + address + '{/blue-fg}';
         screen._.msg.display(text);
@@ -1236,14 +1216,7 @@ function start(stats, callback) {
         return screen._.prompt.type(text, '', function(err, address) {
           if (err) return screen._.msg.error(err.message);
           if (!address) return screen.render();
-
-          // return screen._.msg.error('Not supported.');
-
-          // XXX Not working:
-          // NOTE: This won't work since the rpc server doesn't expose the send addresses.
-          // return client.call('setaccount', [address, label], function(err) {
-          // Should look like: return client.call('setaddresspageaccount', [address], function(err) {
-          return process.nextTick(function(err) {
+          return client.call('setaccount', [address, label], function(err) {
             if (err) return screen._.msg.error(err.message);
             text = 'Created address: {blue-fg}' + label + '{/blue-fg}';
             screen._.msg.display(text);
@@ -1255,17 +1228,18 @@ function start(stats, callback) {
     }
 
     text = 'Label for {blue-fg}' + address + '{/blue-fg}:';
-    return screen._.prompt.type(text, '', function(err, value) {
+    return screen._.prompt.type(text, label, function(err, newLabel) {
       if (err) return screen._.msg.error(err.message);
-      if (!value) return screen.render();
+      if (!newLabel) return screen.render();
 
-      // return screen._.msg.error('Not supported.');
+      return screen._.msg.error('Not supported.');
 
-      // XXX Not working:
-      // return client.call('setaccount', [address, value], function(err) {
-      return process.nextTick(function(err) {
+      // For some reason this *creates* a receivable address by the same
+      // account name, but different address.
+      return client.call('setaccount', [address, newLabel], function(err) {
         if (err) return screen._.msg.error(err.message);
-        text = 'Edited label: {blue-fg}' + label + '->' + value + '{/blue-fg}';
+        text = 'Edited label: {blue-fg}'
+          + label + '->' + (newLabel || '[none]') + '{/blue-fg}';
         screen._.msg.display(text);
         screen.render();
         refresh();
@@ -1786,7 +1760,7 @@ function start(stats, callback) {
       items = addresses.reduce(function(out, account) {
         var w = screen.width;
         var name = account.name || '[none]';
-        var sp = Array(w - (account.address.length + name.length) + 1).join(' ');
+        var sp = Array(w - (account.address.length + name.length) - 3 + 1).join(' ');
         out.push('{blue-fg}' + name + '{/blue-fg}'
           + sp + '{green-fg}' + account.address + '{/green-fg}');
         return out;
@@ -1807,6 +1781,10 @@ function start(stats, callback) {
       });
     });
   }
+
+  screen.key('f5', function() {
+    refresh();
+  });
 
   (function self() {
     return refresh(function() {
