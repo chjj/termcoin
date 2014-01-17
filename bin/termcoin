@@ -372,6 +372,9 @@ function startServer(callback) {
 
   try {
     fs.statSync(platform.pid);
+    if (!startServer.started) {
+      startServer.started = true;
+    }
     return callback();
   } catch (e) {
     ;
@@ -994,7 +997,7 @@ function start(stats, callback) {
       'Copy Label',
       'Rename',
       'Delete',
-      '-',
+      //'-',
       'Send From',
       'Show QR Code',
       'Save QR Code PNG',
@@ -1305,7 +1308,7 @@ function start(stats, callback) {
       'Copy Label',
       'Rename',
       'Delete',
-      '-',
+      //'-',
       'Send Coins',
       'Show QR Code',
       'Save QR Code PNG',
@@ -1432,8 +1435,13 @@ function start(stats, callback) {
       'Backup Wallet',
       'Verify Message Signature',
       'Sign Message',
-      'Rescan Addresses',
-      'Set Transaction Fee'
+      'Rescan Block Chain',
+      'Set Transaction Fee',
+      'Import Private Key',
+      'Dump Private Key',
+      'Refill Key Pool',
+      'Toggle Coin Generation',
+      'Get Mining Info'
     ]
   });
 
@@ -1546,31 +1554,62 @@ function start(stats, callback) {
     }
 
     if (text === 'Sign Message') {
-      screen._.picker.setItems(Object.keys(stats.accounts));
-      return screen._.picker.pick(function(err, address) {
+      return checkEncrypt(function(err) {
         if (err) return screen._.msg.error(err.message);
-        if (address == null) return screen.render();
-        return screen._.prompt.type('Message:', '', function(err, message) {
+        screen._.picker.setItems(Object.keys(stats.accounts));
+        return screen._.picker.pick(function(err, address) {
           if (err) return screen._.msg.error(err.message);
-          if (message == null) return screen.render();
-          return signMessage(address, message, function(err, signature) {
+          if (address == null) return screen.render();
+          return screen._.prompt.type('Message:', '', function(err, message) {
             if (err) return screen._.msg.error(err.message);
-            if (signature == null) return screen.render();
-            return screen._.msg.display('Signature:\n' + signature, -1);
+            if (message == null) return screen.render();
+            return signMessage(address, message, function(err, signature) {
+              if (err) return screen._.msg.error(err.message);
+              if (signature == null) return screen.render();
+              return screen._.msg.display('Signature:\n' + signature, -1);
+            });
           });
         });
       });
     }
 
-    if (text === 'Rescan Addresses') {
-      screen._.loader.load('Rescanning...');
-      return cp.execFile(platform.daemon, ['-rescan'], function(err, stdout, stderr) {
-        screen._.loader.stop();
-        if (err || stderr) {
-          return screen._.msg.error(stderr || err.message);
+    if (text === 'Rescan Block Chain') {
+      screen._.loader.load('Rescanning (this may take a while)...');
+      client.call('stop', [], function(err) {
+        if (err) {
+          client.lock = false;
+          screen._.loader.stop();
+          return screen._.msg.error(err.message);
         }
-        return screen._.msg.display('Successfully rescanned addresses.');
+        return setTimeout(function() {
+          return cp.execFile(platform.daemon, ['-rescan'], function(err, stdout, stderr) {
+            if (err || stderr) {
+              return startServer(function(err_) {
+                client.lock = false;
+                screen._.loader.stop();
+                if (err_) {
+                  screen.leave();
+                  console.error('Fatal error: Could not restart server. Quitting.');
+                  return proces.exit(1);
+                }
+                return screen._.msg.error(stderr || err.message);
+              });
+            }
+            return startServer(function(err) {
+              client.lock = false;
+              screen._.loader.stop();
+              if (err) {
+                screen.leave();
+                console.error('Fatal error: Could not restart server. Quitting.');
+                return proces.exit(1);
+              }
+              return screen._.msg.display('Successfully rescanned addresses.');
+            });
+          });
+        }, 12 * 1000);
       });
+      client.lock = true;
+      return;
     }
 
     if (text === 'Set Transaction Fee') {
@@ -1581,6 +1620,83 @@ function start(stats, callback) {
           if (err) return screen._.msg.error(err.message);
           return screen._.msg.display('Successfully set transaction fee.');
         });
+      });
+    }
+
+    if (text === 'Import Private Key') {
+      return checkEncrypt(function(err) {
+        if (err) return screen._.msg.error(err.message);
+        return screen._.prompt.type('Key:', '', function(err, key) {
+          if (err) return screen._.msg.error(err.message);
+          if (key == null) return screen.render();
+          return screen._.prompt.type('Label:', '', function(err, label) {
+            if (err) return screen._.msg.error(err.message);
+            label = label || '';
+            return screen._.question.ask('Rescan?', function(err, rescan) {
+              if (err) return screen._.msg.error(err.message);
+              if (rescan) {
+                screen._.loader.load('Rescanning (this may take a while)...');
+              }
+              return client.call('importprivkey', [key, label, !!rescan], function(err) {
+                if (rescan) screen._.loader.stop();
+                if (err) return screen._.msg.error(err.message);
+                return screen._.msg.display('Successfully set transaction fee.');
+              });
+            });
+          });
+        });
+      });
+    }
+
+    if (text === 'Dump Private Key') {
+      return checkEncrypt(function(err) {
+        if (err) return screen._.msg.error(err.message);
+        screen._.picker.setItems(Object.keys(stats.accounts));
+        return screen._.picker.pick(function(err, address) {
+          if (err) return screen._.msg.error(err.message);
+          return client.call('dumpprivkey', [address], function(err, key) {
+            if (err) return screen._.msg.error(err.message);
+            return screen._.msg.display('Private Key: ' + key);
+          });
+        });
+      });
+    }
+
+    if (text === 'Refill Key Pool') {
+      return checkEncrypt(function(err) {
+        if (err) return screen._.msg.error(err.message);
+        screen._.loader.load('Refilling key pool...');
+        return client.call('keypoolrefill', [], function(err, key) {
+          screen._.loader.stop();
+          if (err) return screen._.msg.error(err.message);
+          return screen._.msg.display('Key pool refill complete.');
+        });
+      });
+    }
+
+    if (text === 'Toggle Coin Generation') {
+      return client.call('getgenerate', [], function(err, generating) {
+        if (err) return screen._.msg.error(err.message);
+        if (generating) {
+          return client.call('setgenerate', [false], function(err, key) {
+            if (err) return screen._.msg.error(err.message);
+            return screen._.msg.display('Stopped mining.');
+          });
+        }
+        return screen._.prompt.type('Threads? (-1 for no. of cores)', '1', function(err, threads) {
+          if (err) return screen._.msg.error(err.message);
+          return client.call('setgenerate', [true, +threads], function(err, key) {
+            if (err) return screen._.msg.error(err.message);
+            return screen._.msg.display('Mining!');
+          });
+        });
+      });
+    }
+
+    if (text === 'Get Mining Info') {
+      return client.call('getmininginfo', [], function(err, info) {
+        if (err) return screen._.msg.error(err.message);
+        return screen._.msg.display(inspect(info), -1);
       });
     }
   });
