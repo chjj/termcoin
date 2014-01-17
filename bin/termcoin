@@ -977,8 +977,10 @@ function start(stats, callback) {
       }
 
       if (option === 'Save QR Code PNG') {
-        return screen._.prompt.type('Save to:', process.env.HOME + '/', function(err, file) {
+        return screen._.prompt.type('Save to:', '~/', function(err, file) {
           if (err) return screen._.msg.error(err.message);
+          if (file == null) return screen.render();
+          file = file.replace(/^~/, process.env.HOME);
           var code = 'bitcoin:' + address + '?label=' + label;
           // TODO: Add prompt for an optional message:
           //+ '&message=' + message;
@@ -1283,8 +1285,10 @@ function start(stats, callback) {
       }
 
       if (option === 'Save QR Code PNG') {
-        return screen._.prompt.type('Save to:', process.env.HOME + '/', function(err, file) {
+        return screen._.prompt.type('Save to:', '~/', function(err, file) {
           if (err) return screen._.msg.error(err.message);
+          if (file == null) return screen.render();
+          file = file.replace(/^~/, process.env.HOME);
           var code = 'bitcoin:' + address + '?label=' + label;
           // TODO: Add prompt for an optional message:
           //+ '&message=' + message;
@@ -1438,25 +1442,24 @@ function start(stats, callback) {
     }
 
     if (text === 'Backup Wallet') {
-      return screen._.prompt.type('Save to:', process.env.HOME + '/', function(err, value) {
-        if (err) {
-          screen.render();
-          return screen._.msg.error(err.message);
-        }
-        if (value == null) {
-          screen.render();
-          return;
-        }
+      return screen._.prompt.type('Save to:', '~/', function(err, file) {
+        if (err) return screen._.msg.error(err.message);
+        if (file == null) return screen.render();
+
+        file = file.replace(/^~/, process.env.HOME);
+
         var stat;
         try {
-          stat = fs.statSync(value);
+          stat = fs.statSync(file);
         } catch (e) {
           ;
         }
+
         if (stat && stat.isDirectory()) {
-          value = value.replace(/\/+$/, '') + '/wallet.dat.bak';
+          file = file.replace(/\/+$/, '') + '/wallet.dat.bak';
         }
-        return backupWallet(value, function(err) {
+
+        return backupWallet(file, function(err) {
           if (err) return screen._.msg.error(err.messsage);
           screen._.msg.display('Wallet successfully backed up.');
           screen.render();
