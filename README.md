@@ -9,31 +9,19 @@ optionally other cryptocurrency rpc servers) as its backend.
 
 ![overview](https://raw.github.com/chjj/termcoin/master/img/1.png)
 
-![send](https://raw.github.com/chjj/termcoin/master/img/2.png)
-
-![send focused](https://raw.github.com/chjj/termcoin/master/img/3.png)
-
-![send address menu](https://raw.github.com/chjj/termcoin/master/img/4.png)
-
 ![send address menu middle](https://raw.github.com/chjj/termcoin/master/img/5.png)
 
 ![send filled](https://raw.github.com/chjj/termcoin/master/img/6.png)
 
-![receive](https://raw.github.com/chjj/termcoin/master/img/7.png)
-
 ![receive menu](https://raw.github.com/chjj/termcoin/master/img/8.png)
 
 ![receive qr code](https://raw.github.com/chjj/termcoin/master/img/9.png)
-
-![transactions](https://raw.github.com/chjj/termcoin/master/img/10.png)
 
 ![transactions menu](https://raw.github.com/chjj/termcoin/master/img/11.png)
 
 ![transaction details](https://raw.github.com/chjj/termcoin/master/img/12.png)
 
 ![addresses menu](https://raw.github.com/chjj/termcoin/master/img/13.png)
-
-![misc sign menu](https://raw.github.com/chjj/termcoin/master/img/14.png)
 
 ![misc encrypt prompt](https://raw.github.com/chjj/termcoin/master/img/15.png)
 
