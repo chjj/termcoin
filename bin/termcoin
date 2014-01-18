@@ -93,15 +93,7 @@ function getAddresses(accounts, callback) {
   // Bitcoin addresses are 27-35 bytes in length.
   // https://bitcointalk.org/index.php?topic=1026.0
   do {
-    if (m = /^[a-zA-Z1-9]{27}/g.exec(wallet)) ma.push(m[0]);
-    if (m = /^[a-zA-Z1-9]{28}/g.exec(wallet)) ma.push(m[0]);
-    if (m = /^[a-zA-Z1-9]{29}/g.exec(wallet)) ma.push(m[0]);
-    if (m = /^[a-zA-Z1-9]{30}/g.exec(wallet)) ma.push(m[0]);
-    if (m = /^[a-zA-Z1-9]{31}/g.exec(wallet)) ma.push(m[0]);
-    if (m = /^[a-zA-Z1-9]{32}/g.exec(wallet)) ma.push(m[0]);
-    if (m = /^[a-zA-Z1-9]{33}/g.exec(wallet)) ma.push(m[0]);
-    if (m = /^[a-zA-Z1-9]{34}/g.exec(wallet)) ma.push(m[0]);
-    if (m = /^[a-zA-Z1-9]{35}/g.exec(wallet)) ma.push(m[0]);
+    if (m = /^[a-zA-Z1-9]{27,35}/g.exec(wallet)) ma.push(m[0]);
   } while (wallet = wallet.substring(1));
 
   if (!ma.length) {
