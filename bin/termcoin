@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 
 /**
- * termcoin
- * Copyright (c) 2014, Christopher Jeffrey
+ * termcoin - a bitcoin wallet for your terminal
+ * Copyright (c) 2014, Christopher Jeffrey. (MIT Licensed)
  * https://github.com/chjj/termcoin
  *
  * Resources:
+ *   https://en.bitcoin.it/wiki/Original_Bitcoin_client/API_Calls_list
  *   https://github.com/bitcoin/bitcoin/blob/master/src/rpcserver.cpp
  *   https://github.com/bitcoin/bitcoin/blob/master/src/rpcrawtransaction.cpp
  *   https://github.com/bitcoin/bitcoin/blob/master/src/rpcwallet.cpp
- *   https://en.bitcoin.it/wiki/Original_Bitcoin_client/API_Calls_list
  */
 
 /**
@@ -69,7 +69,8 @@ function getStats(callback) {
   });
 }
 
-// Ridiculous workaround:
+// XXX Ridiculous workaround, but, short of including berkeley db bindings,
+// this is the only way to extract "send" addresses from the wallet.dat.
 function getAddresses(accounts, callback) {
   if (opt.remote) return callback(null, []);
 
@@ -135,10 +136,9 @@ function getAccounts(callback) {
   return client.call('listaccounts', function(err, accounts) {
     if (err) return callback(err);
     return forEach(Object.keys(accounts), function(name, next) {
-      // return client.call('getaccountaddress', [name], function(err, address) {
-      return client.call('getaddressesbyaccount', [name], function(err, address) {
+      return client.call('getaddressesbyaccount', [name], function(err, addresses) {
         if (err) return next();
-        address.forEach(function(address) {
+        addresses.forEach(function(address) {
           results[address] = {
             name: name,
             address: address,
@@ -154,11 +154,22 @@ function getAccounts(callback) {
 }
 
 function getProgress(callback) {
-  return client.call('getblockhash', [0], function(err, hash) {
+  // This is kind of awkward, but in order to calculate
+  // the number of hours behind we are, we need to:
+  //   1. Get the hash of the genesis block.
+  //   2. Retrieve the genesis block based on the hash.
+  //   3. Get the current block count (how many we have so far).
+  //   4. Get the hash of the latest block using the block count.
+  //   5. Get our latest block using the hash.
+  //   6. Use the timestamps on the genesis block as well as our latest block,
+  //   and compare them with the current time to determine the amount of time
+  //   beind we are. This isn't perfectly accurate because `Date.now()` doesn't
+  //   necessary represent the time the last block was found.
+  return client.call('getconnectioncount', function(err, connections) {
     if (err) return callback(err);
-    return client.call('getblock', [hash], function(err, genesis) {
+    return client.call('getblockhash', [0], function(err, hash) {
       if (err) return callback(err);
-      return client.call('getconnectioncount', function(err, connections) {
+      return client.call('getblock', [hash], function(err, genesis) {
         if (err) return callback(err);
         return client.call('getblockcount', function(err, count) {
           if (err) return callback(err);
@@ -330,9 +341,10 @@ function startServer(callback) {
 
   return cp.exec('(setsid ' + cmd + ' > /dev/null 2>& 1 &)', function(err) {
     if (err) return callback(err);
-    return setTimeout(function() {
+    return client.call('listaccounts', [], function(err) {
+      if (err) return callback(err);
       return callback();
-    }, 12 * 1000);
+    });
   });
 }
 
@@ -2260,8 +2272,8 @@ function main(callback) {
   }
 
   config.rpcconnect = opt.host || config.rpcconnect || 'localhost';
-  config.rpcport = opt.port || config.rpcport || 8332;
-  config.rpcuser = opt.user || config.rpcuser || 'bitcoinrpc';
+  config.rpcport = opt.port || config.rpcport || 9999;
+  config.rpcuser = opt.user || config.rpcuser || 'coinrpc';
   config.rpcpassword = opt.password || config.rpcpassword || 'foobar';
   config.rpcssl = opt.ssl || config.rpcssl || false;
 
@@ -2334,7 +2346,8 @@ Client.prototype.request = function(options, callback) {
     , path = options.path || '/'
     , body = options.body || {}
     , method = options.method || 'POST'
-    , cb = callback;
+    , cb = callback
+    , attempts = 0;
 
   if (typeof callback !== 'function') {
     callback = function() {};
@@ -2355,44 +2368,54 @@ Client.prototype.request = function(options, callback) {
     json: body
   };
 
-  if (self.lock) return callback(null, {});
-  return request(options, function(err, res, body) {
+  (function retry() {
     if (self.lock) return callback(null, {});
+    return request(options, function(err, res, body) {
+      if (self.lock) return callback(null, {});
 
-    if (err) {
-      return callback(new Error(err));
-    }
-
-    if (res.statusCode === 403 || res.statusCode === 401) {
-      return callback(new Error('Forbidden.'));
-    }
-
-    if (res.statusCode === 404) {
-      return callback(new Error('Not found.'));
-    }
-
-    try {
-      if (typeof body === 'string') {
-        body = JSON.parse(body);
+      if (err) {
+        if (~err.message.indexOf('ECONNREFUSED')) {
+          if (++attempts === 30) {
+            return callback(err);
+          }
+          return setTimeout(function() {
+            return retry();
+          }, 1000);
+        }
+        return callback(err);
       }
-    } catch (e) {
-      e.message += '\nStatus code: ' + res.statusCode + '.';
-      e.message += '\nJSON: ' + body;
-      return callback(e);
-    }
 
-    if (!body) {
-      return callback(new Error('No body.'));
-    }
+      if (res.statusCode === 403 || res.statusCode === 401) {
+        return callback(new Error('Forbidden.'));
+      }
 
-    if (body.error) {
-      err = new Error(body.error.message);
-      err.code = body.error.code;
-      return callback(err);
-    }
+      if (res.statusCode === 404) {
+        return callback(new Error('Not found.'));
+      }
 
-    return callback(null, body.result);
-  });
+      try {
+        if (typeof body === 'string') {
+          body = JSON.parse(body);
+        }
+      } catch (e) {
+        e.message += '\nStatus code: ' + res.statusCode + '.';
+        e.message += '\nJSON: ' + body;
+        return callback(e);
+      }
+
+      if (!body) {
+        return callback(new Error('No body.'));
+      }
+
+      if (body.error) {
+        err = new Error(body.error.message);
+        err.code = body.error.code;
+        return callback(err);
+      }
+
+      return callback(null, body.result);
+    });
+  })();
 };
 
 /**
