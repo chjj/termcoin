@@ -365,20 +365,6 @@ function start(stats, callback) {
     keys: true,
     mouse: true,
     autoCommandKeys: true,
-    style_: {
-      item: {
-        fg: 'blue',
-        hover: {
-          fg: 'lightgreen'
-        }
-      },
-      selected: {
-        fg: 'lightgreen'
-      },
-      prefix: {
-        fg: 'lightgreen'
-      }
-    },
     style: {
       item: {
         fg: 'blue',
