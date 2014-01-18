@@ -789,7 +789,8 @@ function start(stats, callback) {
 
   function _pick() {
     return pickAddress(function(err, value) {
-      if (err) return screen.render();
+      if (err) return screen._.msg.error(err.message);
+      if (value == null) return screen.render();
       tabs.send._.address.setValue(value);
       tabs.send._.address.focus();
       screen.render();
@@ -1589,6 +1590,7 @@ function start(stats, callback) {
         screen._.picker.setItems(Object.keys(stats.accounts));
         return screen._.picker.pick(function(err, address) {
           if (err) return screen._.msg.error(err.message);
+          if (address == null) return screen.render();
           return client.call('dumpprivkey', [address], function(err, key) {
             if (err) return screen._.msg.error(err.message);
             return screen._.msg.display('Private Key: ' + key);
@@ -1691,7 +1693,8 @@ function start(stats, callback) {
     }
     screen._.prompt._.cancel.press();
     return pickAddress(function(err, value) {
-      if (err) return screen.render();
+      if (err) return screen._.msg.error(err.message);
+      if (value == null) return screen.render();
       tabs.misc._.list.emit('select', tabs.misc._.list.items[1], 1);
       screen._.prompt._.input.setValue(value);
       screen.render();
@@ -2021,17 +2024,25 @@ function start(stats, callback) {
   })();
 
   screen.key(['C-c', 'q'], function(ch, key) {
-    // TODO: Something like:
-    //if (key.name === 'q') {
-    //  if (screen.focused && (screen.focused.parent !== screen._.wrapper || screen.focused.parent._isTab)) {
-    //    return;
-    //  }
-    //}
-    if (!opt.host) {
-      //client.call('stop', function() {
-      return callback();
-      return;
+    var f = screen.focused
+      , _ = screen._;
+
+    if (ch === 'q') {
+      if (f === _.question
+          || f === _.msg
+          || f === _.qrbox
+          || f === _.fm
+          || f === _.picker) {
+        return;
+      }
     }
+
+    if (!opt.remote && !opt.host) {
+      return client.call('stop', function() {
+        return callback();
+      });
+    }
+
     return callback();
   });
 
