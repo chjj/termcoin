@@ -712,6 +712,9 @@ function start(stats, callback) {
   });
 
   tabs.send._.form.on('submit', function(data) {
+    // Reset here prevent accidental double payments:
+    tabs.send._.form.reset();
+
     if (tabs.send._.from.visible) {
       tabs.send._.ftext.hide();
       tabs.send._.from.hide();
@@ -758,13 +761,13 @@ function start(stats, callback) {
 
       return sendTo(function(err, result) {
         if (err) return screen._.msg.error(err.message);
-        if (!result || !Object.keys(result).length) {
+        if (!result) {
           return screen._.msg.error('Transaction not completed.');
         }
         return checkLabel(function(err) {
           screen._.msg.display(
             'Transaction completed successfully: '
-            + result.txid + '.');
+            + result + '.');
         });
       });
     });
@@ -2021,20 +2024,26 @@ function start(stats, callback) {
     });
   })();
 
-  screen.key(['C-c', 'q'], function(ch, key) {
-    var f = screen.focused
+  screen.key('q', function(ch, key) {
+    var el = screen.focused
       , _ = screen._;
 
-    if (ch === 'q') {
-      if (f === _.question
-          || f === _.msg
-          || f === _.qrbox
-          || f === _.fm
-          || f === _.picker) {
-        return;
-      }
+    if (el === _.question
+        || el === _.msg
+        || el === _.qrbox
+        || el === _.fm
+        || el === _.picker) {
+      return;
     }
 
+    return exit();
+  });
+
+  screen.key('C-c', function(ch, key) {
+    return exit();
+  });
+
+  function exit() {
     if (!opt.remote && !opt.host) {
       return client.call('stop', function() {
         return callback();
@@ -2042,7 +2051,7 @@ function start(stats, callback) {
     }
 
     return callback();
-  });
+  }
 
   screen.render();
 }
