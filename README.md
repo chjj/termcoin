@@ -7,23 +7,23 @@ optionally other cryptocurrency rpc servers) as its backend.
 
 ## Screenshots
 
-![overview](https://raw.github.com/chjj/termcoin/master/img/1.png)
+![overview 1](https://i.imgur.com/r0w7bHD.png)
 
-![send address menu middle](https://raw.github.com/chjj/termcoin/master/img/5.png)
+![send address menu middle 5](https://i.imgur.com/sYzTE4v.png)
 
-![receive menu](https://raw.github.com/chjj/termcoin/master/img/8.png)
+![receive menu 8](https://i.imgur.com/TCX6kLW.png)
 
-![receive qr code](https://raw.github.com/chjj/termcoin/master/img/9.png)
+![receive qr code 9](https://i.imgur.com/SYfeRGu.png)
 
-![transactions menu](https://raw.github.com/chjj/termcoin/master/img/11.png)
+![transactions menu 11](https://i.imgur.com/vjR3Yha.png)
 
-![transaction details](https://raw.github.com/chjj/termcoin/master/img/12.png)
+![transaction details 12](https://i.imgur.com/lMZCITM.png)
 
-![addresses menu](https://raw.github.com/chjj/termcoin/master/img/13.png)
+![addresses menu 13](https://i.imgur.com/Q434liE.png)
 
-![misc encrypt prompt](https://raw.github.com/chjj/termcoin/master/img/15.png)
+![misc encrypt prompt 15](https://i.imgur.com/nxMOg45.png)
 
-![logs](https://raw.github.com/chjj/termcoin/master/img/16.png)
+![logs 16](https://i.imgur.com/RqV50K6.png)
 
 ## Usage
 
