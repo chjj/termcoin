@@ -29,8 +29,8 @@ var blessed = require('blessed')
   , mock = require('../lib/mock');
 
 var opt = parseArg(process.argv.slice())
-  , config = readConf()
   , platform = getPlatform(opt)
+  , config = readConf()
   , now = Date.now()
   , decryptTime = 0
   , platform
