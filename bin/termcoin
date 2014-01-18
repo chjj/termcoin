@@ -867,9 +867,10 @@ function start(stats, callback) {
       return client.call('setaccount', [address], function(err) {
         if (err) return screen._.msg.error(err.message);
         text = 'Deleted address: {blue-fg}' + address + '{/blue-fg}';
-        screen._.msg.display(text);
-        screen.render();
-        refresh();
+        return refresh(function() {
+          screen._.msg.display(text);
+          screen.render();
+        }, true);
       });
     });
   }
@@ -888,9 +889,10 @@ function start(stats, callback) {
         return createAddress(value, function(err, address) {
           if (err) return screen._.msg.error(err.message);
           text = 'Created address: {blue-fg}' + address + '{/blue-fg}';
-          screen._.msg.display(text);
-          screen.render();
-          refresh();
+          return refresh(function() {
+            screen._.msg.display(text);
+            screen.render();
+          }, true);
         });
       });
     }
@@ -933,9 +935,10 @@ function start(stats, callback) {
             if (err) return screen._.msg.error(err.message);
             text = 'Edited label: {blue-fg}'
               + label + '->' + (newLabel || '[none]') + '{/blue-fg}';
-            screen._.msg.display(text);
-            screen.render();
-            refresh();
+            return refresh(function() {
+              screen._.msg.display(text);
+              screen.render();
+            }, true);
           });
         });
       }
@@ -1175,9 +1178,10 @@ function start(stats, callback) {
       return client.call('setaccount', [address], function(err) {
         if (err) return screen._.msg.error(err.message);
         text = 'Deleted address: {blue-fg}' + address + '{/blue-fg}';
-        screen._.msg.display(text);
-        screen.render();
-        refresh();
+        return refresh(function() {
+          screen._.msg.display(text);
+          screen.render();
+        }, true);
       });
     });
   }
@@ -1200,9 +1204,10 @@ function start(stats, callback) {
           return client.call('setaccount', [address, label], function(err) {
             if (err) return screen._.msg.error(err.message);
             text = 'Created address: {blue-fg}' + label + '{/blue-fg}';
-            screen._.msg.display(text);
-            screen.render();
-            refresh();
+            return refresh(function() {
+              screen._.msg.display(text);
+              screen.render();
+            }, true);
           });
         });
       });
@@ -1245,9 +1250,10 @@ function start(stats, callback) {
             if (err) return screen._.msg.error(err.message);
             text = 'Edited label: {blue-fg}'
               + label + '->' + (newLabel || '[none]') + '{/blue-fg}';
-            screen._.msg.display(text);
-            screen.render();
-            refresh();
+            return refresh(function() {
+              screen._.msg.display(text);
+              screen.render();
+            }, true);
           });
         });
       }
@@ -1660,10 +1666,6 @@ function start(stats, callback) {
     tags: true
   });
 
-  tabs.debug.key(['f5', 'r'], function() {
-    refresh();
-  });
-
   /**
    * Global Widgets
    */
@@ -1870,14 +1872,44 @@ function start(stats, callback) {
     });
   }
 
-  function refresh(callback, noLoad) {
-    if (client.lock) return callback();
-    if (!noLoad) screen._.loader.load('Loading...');
+  function refresh(callback, showLoad) {
+    if (refresh.lock) {
+      if (callback) callback();
+      return;
+    }
+
+    var done = function(err) {
+      refresh.lock = false;
+      if (!callback) return;
+      return err
+        ? callback(err)
+        : callback();
+    };
+
+    refresh.lock = true;
+
+    if (client.lock) return done();
+
+    if (screen._.prompt.visible
+        || screen._.question.visible
+        || screen._.msg.visible
+        || screen._.loader.visible) {
+      showLoad = false;
+    }
+
+    if (showLoad) {
+      screen._.loader.load('Loading...');
+    }
+
     return getStats(function(err, stats_) {
-      if (client.lock) return callback();
+      if (client.lock) {
+        if (showLoad) screen._.loader.stop();
+        return done();
+      }
+
       if (err) {
-        if (!noLoad) screen._.loader.stop();
-        return;
+        if (showLoad) screen._.loader.stop();
+        return done(err);
       }
 
       stats = stats_;
@@ -1969,23 +2001,23 @@ function start(stats, callback) {
 
       screen.render();
 
-      if (!noLoad) screen._.loader.stop();
+      if (showLoad) screen._.loader.stop();
 
       return checkEncrypt(function(err) {
         if (err) screen._.msg.error(err.message);
-        if (callback) callback();
+        return done();
       });
     });
   }
 
   screen.key('f5', function() {
-    refresh();
+    refresh(null, true);
   });
 
   (function self() {
     return refresh(function() {
       return setTimeout(self, 10 * 1000);
-    }, true);
+    });
   })();
 
   screen.key(['C-c', 'q'], function(ch, key) {
