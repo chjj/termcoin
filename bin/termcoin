@@ -2227,6 +2227,7 @@ function parseArg(argv) {
       case '--datadir':
         options.datadir = argv.shift();
         break;
+      case '-?':
       case '-h':
       case '--help':
         return help();
@@ -2255,8 +2256,20 @@ function parseArg(argv) {
 }
 
 function help() {
-  console.log('termcoin - a text ui for bitcoin/litecoin/dogecoin/etc.');
-  return process.exit(0);
+  var options = {
+    cwd: process.cwd(),
+    env: process.env,
+    setsid: false,
+    customFds: [0, 1, 2]
+  };
+
+  cp.spawn('man',
+    [__dirname + '/../man/termcoin.1'],
+    options);
+
+  // Kill the current stack.
+  process.once('uncaughtException', function() {});
+  throw 'stop';
 }
 
 /**
