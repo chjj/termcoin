@@ -2430,7 +2430,7 @@ Client.prototype.request = function(options, callback) {
       if (self.lock) return callback(null, {});
 
       if (err) {
-        if (~err.message.indexOf('ECONNREFUSED')) {
+        if (err.code === 'ECONNREFUSED') {
           if (++attempts === 30) {
             return callback(err);
           }
@@ -2560,6 +2560,10 @@ function request(options, callback) {
 
   var req = protocol.request(opt);
 
+  req.on('error', function(err) {
+    callback(err);
+  });
+
   req.on('response', function(res) {
     var decoder = new StringDecoder('utf8')
       , done = false
@@ -2576,21 +2580,24 @@ function request(options, callback) {
           ;
         }
       }
-      callback(null, res, body);
+      res.socket.removeListener('error', error);
       res.socket.removeListener('end', end);
+      callback(null, res, body);
+    }
+
+    function error(err) {
+      res.destroy();
+      callback(err);
     }
 
     res.on('data', function(data) {
       body += decoder.write(data);
     });
 
-    res.on('error', function(err) {
-      res.destroy();
-      callback(err);
-    });
+    res.on('error', error);
+    res.socket.on('error', error);
 
     res.on('end', end);
-
     // An agent socket's `end` sometimes
     // wont be emitted on the response.
     res.socket.on('end', end);
