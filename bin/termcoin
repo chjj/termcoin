@@ -868,10 +868,9 @@ function start(stats, callback) {
       return client.call('setaccount', [address], function(err) {
         if (err) return screen._.msg.error(err.message);
         text = 'Deleted address: {blue-fg}' + address + '{/blue-fg}';
-        return refresh(function() {
-          screen._.msg.display(text);
-          screen.render();
-        }, true);
+        screen._.msg.display(text);
+        screen.render();
+        return refresh();
       });
     });
   }
@@ -890,10 +889,9 @@ function start(stats, callback) {
         return createAddress(value, function(err, address) {
           if (err) return screen._.msg.error(err.message);
           text = 'Created address: {blue-fg}' + address + '{/blue-fg}';
-          return refresh(function() {
-            screen._.msg.display(text);
-            screen.render();
-          }, true);
+          screen._.msg.display(text);
+          screen.render();
+          return refresh();
         });
       });
     }
@@ -936,10 +934,9 @@ function start(stats, callback) {
             if (err) return screen._.msg.error(err.message);
             text = 'Edited label: {blue-fg}'
               + label + '->' + (newLabel || '[none]') + '{/blue-fg}';
-            return refresh(function() {
-              screen._.msg.display(text);
-              screen.render();
-            }, true);
+            screen._.msg.display(text);
+            screen.render();
+            return refresh();
           });
         });
       }
@@ -1179,10 +1176,9 @@ function start(stats, callback) {
       return client.call('setaccount', [address], function(err) {
         if (err) return screen._.msg.error(err.message);
         text = 'Deleted address: {blue-fg}' + address + '{/blue-fg}';
-        return refresh(function() {
-          screen._.msg.display(text);
-          screen.render();
-        }, true);
+        screen._.msg.display(text);
+        screen.render();
+        return refresh();
       });
     });
   }
@@ -1205,10 +1201,9 @@ function start(stats, callback) {
           return client.call('setaccount', [address, label], function(err) {
             if (err) return screen._.msg.error(err.message);
             text = 'Created address: {blue-fg}' + label + '{/blue-fg}';
-            return refresh(function() {
-              screen._.msg.display(text);
-              screen.render();
-            }, true);
+            screen._.msg.display(text);
+            screen.render();
+            return refresh();
           });
         });
       });
@@ -1251,10 +1246,9 @@ function start(stats, callback) {
             if (err) return screen._.msg.error(err.message);
             text = 'Edited label: {blue-fg}'
               + label + '->' + (newLabel || '[none]') + '{/blue-fg}';
-            return refresh(function() {
-              screen._.msg.display(text);
-              screen.render();
-            }, true);
+            screen._.msg.display(text);
+            screen.render();
+            return refresh();
           });
         });
       }
@@ -1891,6 +1885,10 @@ function start(stats, callback) {
 
     refresh.lock = true;
 
+    // Disable this functionality:
+    // showLoad = false;
+    refresh.lock = false;
+
     if (client.lock) return done();
 
     if (screen._.prompt.visible
@@ -2014,7 +2012,7 @@ function start(stats, callback) {
   }
 
   screen.key('f5', function() {
-    refresh(null, true);
+    return refresh(null, true);
   });
 
   (function self() {
