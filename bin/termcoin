@@ -346,9 +346,9 @@ function start(stats, callback) {
     fastCSR: true
   });
 
-  var target;
+  screen._.target = null;
 
-  var wrapper = blessed.box({
+  screen._.wrapper = blessed.box({
     parent: screen,
     left: 0,
     right: 0,
@@ -356,8 +356,8 @@ function start(stats, callback) {
     bottom: 0
   });
 
-  var bar = blessed.listbar({
-    parent: wrapper,
+  screen._.bar = blessed.listbar({
+    parent: screen._.wrapper,
     top: 0,
     left: 0,
     right: 0,
@@ -365,29 +365,51 @@ function start(stats, callback) {
     keys: true,
     mouse: true,
     autoCommandKeys: true,
-    style: {
-      bg: 'black',
+    style_: {
       item: {
-        bg: 'blue'
+        fg: 'blue',
+        hover: {
+          fg: 'lightgreen'
+        }
       },
       selected: {
-        bg: 'lightblue'
+        fg: 'lightgreen'
       },
       prefix: {
-        fg: 'green'
+        fg: 'lightgreen'
+      }
+    },
+    style: {
+      item: {
+        fg: 'blue',
+        hover: {
+          fg: 'white',
+          bg: 'black'
+        }
+      },
+      selected: {
+        fg: 'white',
+        bg: 'black'
+      },
+      prefix: {
+        fg: 'white'
       }
     }
   });
 
-  var sep = blessed.line({
-    parent: wrapper,
+  screen.on('prerender', function() {
+    screen._.bar.setContent(Array(screen.width + 1).join(' '));
+  });
+
+  screen._.sep = blessed.line({
+    parent: screen._.wrapper,
     top: 1,
     left: 0,
     right: 0,
     orientation: 'horizontal'
   });
 
-  var tabs = {};
+  var tabs = screen._.tabs = {};
 
   ['overview',
    'send',
@@ -416,19 +438,19 @@ function start(stats, callback) {
       }
     });
 
-    bar.addItem({
+    screen._.bar.addItem({
       text: name,
       callback: function() {
-        if (target) target.detach();
-        wrapper.append(tab);
+        if (screen._.target) screen._.target.detach();
+        screen._.wrapper.append(tab);
         tab.focus();
-        target = tab;
+        screen._.target = tab;
         screen.render();
       }
     });
   });
 
-  bar.commands[0].callback();
+  screen._.bar.commands[0].callback();
 
   /**
    * Overview
@@ -864,7 +886,7 @@ function start(stats, callback) {
       text = 'Label for new address:';
       return screen._.prompt.type(text, '', function(err, value) {
         if (err) return screen._.msg.error(err.message);
-        value = value || '';
+        if (value == null) return screen.render();
         return createAddress(value, function(err, address) {
           if (err) return screen._.msg.error(err.message);
           text = 'Created address: {blue-fg}' + address + '{/blue-fg}';
@@ -905,7 +927,7 @@ function start(stats, callback) {
 
           return screen._.msg.error('Not supported.');
 
-          newLabel = newLabel || '';
+          if (newLabel == null) return screen.render();
 
           // Does not associate address with new account name, just creates a
           // new account with a new address.
@@ -1540,7 +1562,7 @@ function start(stats, callback) {
           if (key == null) return screen.render();
           return screen._.prompt.type('Label:', '', function(err, label) {
             if (err) return screen._.msg.error(err.message);
-            label = label || '';
+            if (label == null) return screen.render();
             return screen._.question.ask('Rescan?', function(err, rescan) {
               if (err) return screen._.msg.error(err.message);
               if (rescan) {
@@ -1971,7 +1993,7 @@ function start(stats, callback) {
   screen.key(['C-c', 'q'], function(ch, key) {
     // TODO: Something like:
     //if (key.name === 'q') {
-    //  if (screen.focused && (screen.focused.parent !== wrapper || screen.focused.parent._isTab)) {
+    //  if (screen.focused && (screen.focused.parent !== screen._.wrapper || screen.focused.parent._isTab)) {
     //    return;
     //  }
     //}
