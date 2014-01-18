@@ -65,6 +65,13 @@ this entirely in node.
 - **xsel/xclip** - clipboard support for X11.
 - **pbcopy** - clipboard support for OSX.
 
+## Donations
+
+- **BTC**:  14UwZi7hY2gQKUvA1Poz7vyxK9SzwAJ6CR
+- **LTC**:  Lg2FyTZn1YRGMUAbL5xYhmjiCZvWM6f2Z1
+- **DOGE**: DAwtjssd9y3HQp5vTXqZhsdshxkDzDXoRT
+- **COYE**: 5Vqi6WYbK6fixQ4A1ypiJZXJtJkMBnAfpu
+
 ## Contribution and License Agreement
 
 If you contribute code to this project, you are implicitly allowing your code
