@@ -11,8 +11,6 @@ optionally other cryptocurrency rpc servers) as its backend.
 
 ![send address menu middle](https://raw.github.com/chjj/termcoin/master/img/5.png)
 
-![send filled](https://raw.github.com/chjj/termcoin/master/img/6.png)
-
 ![receive menu](https://raw.github.com/chjj/termcoin/master/img/8.png)
 
 ![receive qr code](https://raw.github.com/chjj/termcoin/master/img/9.png)
