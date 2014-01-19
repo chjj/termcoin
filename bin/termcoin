@@ -270,7 +270,7 @@ function changePassphrase(opassphrase, npassphrase, callback) {
 }
 
 function forgetKey(callback) {
-  return client.call('walletlock', [], callback);
+  return client.call('walletlock', callback);
 }
 
 function isEncrypted(callback) {
@@ -309,8 +309,8 @@ function startServer(callback) {
 
   try {
     fs.statSync(platform.pid);
-    if (!startServer.started) {
-      startServer.started = true;
+    if (!startServer._ran) {
+      startServer._ran = true;
     }
     return callback(null, false);
   } catch (e) {
@@ -321,41 +321,40 @@ function startServer(callback) {
   // config.rpcport = 9999;
   // client.options.port = 9999;
 
-  if (!startServer.started) {
+  if (!startServer._ran) {
+    startServer._ran = true;
     startServer.started = true;
     console.log('Starting new server on port ' + config.rpcport + '...');
   }
 
-  var cmd = [
-    platform.daemon,
+  var args = [
     '-server',
     '-daemon',
     '-rpcallowip=127.0.0.1'
   ];
 
   if (config.rpcuser !== config.original.rpcuser) {
-    cmd.push('-rpcuser=' + config.rpcuser);
+    args.push('-rpcuser=' + config.rpcuser);
   }
 
   if (config.rpcpassword !== config.original.rpcpassword) {
-    cmd.push('-rpcpassword=' + config.rpcpassword);
+    args.push('-rpcpassword=' + config.rpcpassword);
   }
 
   if (+config.rpcport !== +config.original.rpcport) {
     if (config.original.rpcport || +config.rpcport !== +platform.port) {
-      cmd.push('-rpcport=' + config.rpcport);
+      args.push('-rpcport=' + config.rpcport);
     }
   }
 
   if (opt.datadir) {
-    cmd.push('-datadir=' + opt.datadir);
-    cmd.push('-conf=' + platform.config);
+    args.push('-datadir=' + opt.datadir);
+    args.push('-conf=' + platform.config);
   }
 
-  return cp.exec('(setsid ' + cmd.join(' ') + ' > /dev/null 2>& 1 &)', function(err) {
-  //return cp.execFile(cmd.shift(), cmd, { stdio: ['ignore', 'ignore', 'ignore'], detached: true }, function(err) {
+  return daemonize(platform.daemon, args, function(err) {
     if (err) return callback(err);
-    return client.call('listaccounts', [], function(err) {
+    return client.call('listaccounts', function(err) {
       if (err) {
         return callback(err);
       }
@@ -1524,7 +1523,7 @@ function start(stats, callback) {
 
     if (text === 'Rescan Block Chain') {
       screen._.loader.load('Rescanning (this may take a while)...');
-      client.call('stop', [], function(err) {
+      client.call('stop', function(err) {
         if (err) {
           client.lock = false;
           screen._.loader.stop();
@@ -1616,7 +1615,7 @@ function start(stats, callback) {
       return checkEncrypt(function(err) {
         if (err) return screen._.msg.error(err.message);
         screen._.loader.load('Refilling key pool...');
-        return client.call('keypoolrefill', [], function(err, key) {
+        return client.call('keypoolrefill', function(err, key) {
           screen._.loader.stop();
           if (err) return screen._.msg.error(err.message);
           return screen._.msg.display('Key pool refill complete.');
@@ -1625,7 +1624,7 @@ function start(stats, callback) {
     }
 
     if (text === 'Toggle Coin Generation') {
-      return client.call('getgenerate', [], function(err, generating) {
+      return client.call('getgenerate', function(err, generating) {
         if (err) return screen._.msg.error(err.message);
         if (generating) {
           return client.call('setgenerate', [false], function(err, key) {
@@ -1644,7 +1643,7 @@ function start(stats, callback) {
     }
 
     if (text === 'Get Mining Info') {
-      return client.call('getmininginfo', [], function(err, info) {
+      return client.call('getmininginfo', function(err, info) {
         if (err) return screen._.msg.error(err.message);
         return screen._.msg.display(inspect(info), -1);
       });
@@ -2060,7 +2059,7 @@ function start(stats, callback) {
   });
 
   function exit() {
-    if (!opt.remote && !opt.host) {
+    if (startServer.started) {
       return client.call('stop', function() {
         return callback();
       });
@@ -2558,6 +2557,23 @@ function tsort(obj, desc) {
       ? b.time - a.time
       : a.time - b.time;
   });
+}
+
+function daemonize(file, args, callback) {
+  var v = process.version.substring(1).split('.');
+
+  // `detached` didn't exist pre-0.7.10.
+  if (+v[0] === 0 && +v[1] <= 7 && +v[2] < 10) {
+    args = file + ' ' + args.join(' ');
+    return cp.exec('(setsid ' + args + ' > /dev/null 2>& 1 &)', callback);
+  }
+
+  cp.spawn(file, args, {
+    stdio: ['ignore', 'ignore', 'ignore'],
+    detached: true
+  });
+
+  setTimeout(callback.bind(null, null, null), 1000);
 }
 
 function request(options, callback) {
