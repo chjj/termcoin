@@ -342,6 +342,11 @@ function startServer(callback) {
   }
 
   if (+config.rpcport !== +config.original.rpcport) {
+    // This `if` statement is most likely unnecessary,
+    // but we'll keep it here for neatness. Removing
+    // might have the benefit of compensating if one
+    // of the platforms changes the default port in
+    // the future.
     if (config.original.rpcport
         || +config.rpcport !== +platform.port
         || platform.unknown) {
