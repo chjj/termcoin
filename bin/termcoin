@@ -342,7 +342,9 @@ function startServer(callback) {
   }
 
   if (+config.rpcport !== +config.original.rpcport) {
-    if (config.original.rpcport || +config.rpcport !== +platform.port) {
+    if (config.original.rpcport
+        || +config.rpcport !== +platform.port
+        || platform.unknown) {
       args.push('-rpcport=' + config.rpcport);
     }
   }
@@ -2202,6 +2204,7 @@ function tailBox(file, box) {
 function getPlatform(opt) {
   var name = opt.currency || 'bitcoin'
     , dir = opt.datadir || process.env.HOME + '/.' + name
+    , unknown = false
     , port = 8332;
 
   switch (name) {
@@ -2221,6 +2224,7 @@ function getPlatform(opt) {
       //port = 41338;
       break;
     default:
+      unknown = true;
       port = 18332;
       break;
   }
@@ -2232,7 +2236,8 @@ function getPlatform(opt) {
     wallet: dir + '/wallet.dat',
     log: dir + '/debug.log',
     pid: dir + '/' + name + 'd.pid',
-    port: port
+    port: port,
+    unknown: unknown
   };
 }
 
