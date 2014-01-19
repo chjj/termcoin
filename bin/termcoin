@@ -1996,7 +1996,7 @@ function start(stats, callback) {
             + '{green-fg}' + t.address + '{/green-fg}'
             + ' | '
             + '{yellow-fg}' + t.amount + '{/yellow-fg}'
-            + (t.fee ? '({red-fg}-' + t.fee + '{/red-fg})' : '')
+            + (t.fee ? '({red-fg}' + t.fee + '{/red-fg})' : '')
             + ' | '
             + (t.confirmations < 3
               ? '{red-fg}Unconfirmed (' + t.confirmations + '){/red-fg}'
