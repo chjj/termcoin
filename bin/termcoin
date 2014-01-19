@@ -2065,6 +2065,12 @@ function start(stats, callback) {
       return;
     }
 
+    if (_.msg.visible) {
+      _.msg.hide();
+      screen.render();
+      return;
+    }
+
     return exit();
   });
 
