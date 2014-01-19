@@ -1064,43 +1064,6 @@ function start(stats, callback) {
     }
   });
 
-  tabs.transactions._.msg = blessed.message({
-    parent: tabs.transactions,
-
-    // Fixed in blessed.
-    // top: 'center',
-    // left: 'center',
-    // height: 'shrink',
-    // width: 'shrink',
-
-    //top: 2,
-    //left: 4,
-    //right: 4,
-    //bottom: 2,
-
-    top: 'center',
-    left: 'center',
-    width: '70%',
-    height: '50%',
-
-    scrollable: true,
-    alwaysScroll: true,
-    keys: true,
-    vi: true,
-    mouse: true,
-    tags: true,
-    hidden: true,
-    border: 'line',
-    scrollbar: {
-      ch: ' '
-    },
-    style: {
-      scrollbar: {
-        bg: 'blue'
-      }
-    }
-  });
-
   tabs.transactions._.list.on('select', function(el, index) {
     var tx = tsort(stats.transactions, true)[index];
 
@@ -1142,7 +1105,7 @@ function start(stats, callback) {
         return getTransaction(tx.txid, function(err, transaction) {
           if (err) return screen._.msg.error(err.message);
           var text = inspect(transaction);
-          tabs.transactions._.msg.display(text, -1);
+          screen._.details.display(text, -1);
         });
       }
     });
@@ -1820,6 +1783,47 @@ function start(stats, callback) {
   });
 
   /**
+   * Details
+   */
+
+  screen._.details = blessed.message({
+    parent: screen,
+
+    // Fixed in blessed.
+    // top: 'center',
+    // left: 'center',
+    // height: 'shrink',
+    // width: 'shrink',
+
+    //top: 2,
+    //left: 4,
+    //right: 4,
+    //bottom: 2,
+
+    top: 'center',
+    left: 'center',
+    width: '70%',
+    height: '50%',
+
+    scrollable: true,
+    alwaysScroll: true,
+    keys: true,
+    vi: true,
+    mouse: true,
+    tags: true,
+    hidden: true,
+    border: 'line',
+    scrollbar: {
+      ch: ' '
+    },
+    style: {
+      scrollbar: {
+        bg: 'blue'
+      }
+    }
+  });
+
+  /**
    * QR Box
    */
 
@@ -2058,7 +2062,7 @@ function start(stats, callback) {
 
     if (el === _.question
         || el === _.msg
-        || el === tabs.transactions._.msg
+        || el === _.details
         || el === _.qrbox
         || el === _.fm
         || el === _.picker) {
