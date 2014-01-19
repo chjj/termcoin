@@ -305,45 +305,61 @@ function move(from, to, amount, callback) {
  */
 
 function startServer(callback) {
-  if (opt.remote) return callback();
+  if (opt.remote) return callback(null, false);
 
   try {
     fs.statSync(platform.pid);
     if (!startServer.started) {
       startServer.started = true;
     }
-    return callback();
+    return callback(null, false);
   } catch (e) {
     ;
   }
 
+  // Temporarily disable smart port handling:
+  // config.rpcport = 9999;
+  // client.options.port = 9999;
+
   if (!startServer.started) {
     startServer.started = true;
-    console.log('Starting new server...');
+    console.log('Starting new server on port ' + config.rpcport + '...');
   }
 
   var cmd = [
     platform.daemon,
     '-server',
     '-daemon',
-    '-rpcuser=' + config.rpcuser,
-    '-rpcpassword=' + config.rpcpassword,
-    '-rpcport=' + config.rpcport,
     '-rpcallowip=127.0.0.1'
   ];
+
+  if (config.rpcuser !== config.original.rpcuser) {
+    cmd.push('-rpcuser=' + config.rpcuser);
+  }
+
+  if (config.rpcpassword !== config.original.rpcpassword) {
+    cmd.push('-rpcpassword=' + config.rpcpassword);
+  }
+
+  if (+config.rpcport !== +config.original.rpcport) {
+    if (config.original.rpcport || +config.rpcport !== +platform.port) {
+      cmd.push('-rpcport=' + config.rpcport);
+    }
+  }
 
   if (opt.datadir) {
     cmd.push('-datadir=' + opt.datadir);
     cmd.push('-conf=' + platform.config);
   }
 
-  cmd = cmd.join(' ');
-
-  return cp.exec('(setsid ' + cmd + ' > /dev/null 2>& 1 &)', function(err) {
+  return cp.exec('(setsid ' + cmd.join(' ') + ' > /dev/null 2>& 1 &)', function(err) {
+  //return cp.execFile(cmd.shift(), cmd, { stdio: ['ignore', 'ignore', 'ignore'], detached: true }, function(err) {
     if (err) return callback(err);
     return client.call('listaccounts', [], function(err) {
-      if (err) return callback(err);
-      return callback();
+      if (err) {
+        return callback(err);
+      }
+      return callback(null, true);
     });
   });
 }
@@ -2185,15 +2201,39 @@ function tailBox(file, box) {
  */
 
 function getPlatform(opt) {
-  var name = opt.currency || 'bitcoin';
-  var dir = opt.datadir || process.env.HOME + '/.' + name;
+  var name = opt.currency || 'bitcoin'
+    , dir = opt.datadir || process.env.HOME + '/.' + name
+    , port = 8332;
+
+  switch (name) {
+    case 'bitcoin':
+      port = 8332;
+      break;
+    case 'litecoin':
+      port = 9332;
+      //port = 9333;
+      break;
+    case 'dogecoin':
+      port = 22555;
+      //port = 22556;
+      break;
+    case 'coinyecoin':
+      port = 41337;
+      //port = 41338;
+      break;
+    default:
+      port = 18332;
+      break;
+  }
+
   return {
     name: name,
     daemon: name + 'd',
     config: dir + '/' + name + '.conf',
     wallet: dir + '/wallet.dat',
     log: dir + '/debug.log',
-    pid: dir + '/' + name + 'd.pid'
+    pid: dir + '/' + name + 'd.pid',
+    port: port
   };
 }
 
@@ -2203,7 +2243,7 @@ function readConf() {
   try {
     data = fs.readFileSync(platform.config, 'utf8');
   } catch (e) {
-    return {};
+    return { original: {} };
   }
 
   data = data.trim().split(/(\r?\n)+/);
@@ -2213,10 +2253,13 @@ function readConf() {
       , key = parts[0]
       , val = parts[1];
 
+    if (!key) return out;
+
     out[key] = val;
+    out.original[key] = val;
 
     return out;
-  }, {});
+  }, { original: {} });
 }
 
 function parseArg(argv) {
@@ -2335,7 +2378,7 @@ function main(callback) {
   }
 
   config.rpcconnect = opt.host || config.rpcconnect || 'localhost';
-  config.rpcport = opt.port || config.rpcport || 9999;
+  config.rpcport = opt.port || config.rpcport || platform.port;
   config.rpcuser = opt.user || config.rpcuser || 'coinrpc';
   config.rpcpassword = opt.password || config.rpcpassword || 'foobar';
   config.rpcssl = opt.ssl || config.rpcssl || false;
@@ -2437,7 +2480,7 @@ Client.prototype.request = function(options, callback) {
       if (self.lock) return callback(null, {});
 
       if (err) {
-        if (err.code === 'ECONNREFUSED') {
+        if (err.code === 'ECONNREFUSED' || err.message === 'socket hang up') {
           if (++attempts === 30) {
             return callback(err);
           }
