@@ -1068,15 +1068,20 @@ function start(stats, callback) {
     parent: tabs.transactions,
 
     // Fixed in blessed.
-    top: 'center',
-    left: 'center',
-    height: 'shrink',
-    width: 'shrink',
+    // top: 'center',
+    // left: 'center',
+    // height: 'shrink',
+    // width: 'shrink',
 
     //top: 2,
     //left: 4,
     //right: 4,
     //bottom: 2,
+
+    top: 'center',
+    left: 'center',
+    width: '70%',
+    height: '50%',
 
     scrollable: true,
     alwaysScroll: true,
@@ -2046,12 +2051,14 @@ function start(stats, callback) {
     });
   })();
 
-  screen.key('q', function(ch, key) {
-    var el = screen.focused
-      , _ = screen._;
+  screen.on('element keypress', function(el, ch, key) {
+    var _ = screen._;
+
+    if (ch !== 'q') return;
 
     if (el === _.question
         || el === _.msg
+        || el === tabs.transactions._.msg
         || el === _.qrbox
         || el === _.fm
         || el === _.picker) {
