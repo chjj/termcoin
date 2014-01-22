@@ -2060,7 +2060,10 @@ function start(stats, callback) {
 
     if (ch !== 'q') return;
 
+    if (screen.grabKeys) return;
+
     if (el === _.question
+        || el === _.prompt
         || el === _.msg
         || el === _.details
         || el === _.qrbox
