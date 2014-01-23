@@ -734,8 +734,11 @@ function start(stats, callback) {
   });
 
   tabs.send._.form.on('submit', function(data) {
-    // Reset here prevent accidental double payments:
-    tabs.send._.form.reset();
+    // Technically shouldn't need a lock here since checkEncrypt executes the
+    // callback synchronously (if decrypted) and the loader is invoked in that
+    // callback, but just put this here for good measure.
+    if (tabs.send._.lock) return;
+    tabs.send._.lock = true;
 
     if (tabs.send._.from.visible) {
       tabs.send._.ftext.hide();
@@ -764,7 +767,10 @@ function start(stats, callback) {
     }
 
     return checkEncrypt(function(err) {
-      if (err) return screen._.msg.error(err.message);
+      if (err) {
+        tabs.send._.lock = false;
+        return screen._.msg.error(err.message);
+      }
 
       var checkLabel = function(callback) {
         if (!data.label) return callback();
@@ -781,12 +787,23 @@ function start(stats, callback) {
         return send(data.address, +data.amount, callback);
       };
 
+      screen._.loader.load('Sending...');
+
       return sendTo(function(err, result) {
-        if (err) return screen._.msg.error(err.message);
         if (!result) {
-          return screen._.msg.error('Transaction not completed.');
+          err = new Error('Transaction not completed.');
         }
+
+        if (err) {
+          tabs.send._.lock = false;
+          screen._.loader.stop();
+          return screen._.msg.error(err.message);
+        }
+
         return checkLabel(function(err) {
+          tabs.send._.form.reset();
+          tabs.send._.lock = false;
+          screen._.loader.stop();
           screen._.msg.display(
             'Transaction completed successfully: '
             + result + '.');
