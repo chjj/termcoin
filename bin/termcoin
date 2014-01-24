@@ -2245,6 +2245,7 @@ function tailBox(file, box) {
 
 function getPlatform(opt) {
   var name = opt.currency || 'bitcoin'
+    , conf = name
     , dir = opt.datadir || process.env.HOME + '/.' + name
     , unknown = false
     , port = 8332;
@@ -2256,6 +2257,10 @@ function getPlatform(opt) {
     case 'litecoin':
       port = 9332;
       //port = 9333;
+      break;
+    case 'namecoin':
+      port = 8334;
+      conf = 'bitcoin';
       break;
     case 'dogecoin':
       port = 22555;
@@ -2274,7 +2279,7 @@ function getPlatform(opt) {
   return {
     name: name,
     daemon: name + 'd',
-    config: dir + '/' + name + '.conf',
+    config: dir + '/' + conf + '.conf',
     wallet: dir + '/wallet.dat',
     log: dir + '/debug.log',
     pid: dir + '/' + name + 'd.pid',
