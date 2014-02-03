@@ -548,6 +548,12 @@ function start(stats, callback) {
   (function self() {
     return getProgress(function(err, data) {
       if (data) {
+        if (data.hoursBehind > 2) {
+          tabs.overview._.wallet.label =
+            ' {blue-fg}Wallet{/blue-fg} {red-fg}(Unsynced){/red-fg} ';
+        } else {
+          tabs.overview._.wallet.label = ' {blue-fg}Wallet{/blue-fg} ';
+        }
         tabs.overview._.data.setContent(
           'Connections: ' + data.connections + '\n'
           + 'Blocks: ' + data.blocks + ' (' + data.percent + '%)\n'
