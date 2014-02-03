@@ -549,10 +549,10 @@ function start(stats, callback) {
     return getProgress(function(err, data) {
       if (data) {
         if (data.hoursBehind > 2) {
-          tabs.overview._.wallet.label =
-            ' {blue-fg}Wallet{/blue-fg} {red-fg}(Unsynced){/red-fg} ';
+          tabs.overview._.wallet._label.setContent(
+            ' {blue-fg}Wallet{/blue-fg} {red-fg}(Unsynced){/red-fg} ');
         } else {
-          tabs.overview._.wallet.label = ' {blue-fg}Wallet{/blue-fg} ';
+          tabs.overview._.wallet._label.setContent(' {blue-fg}Wallet{/blue-fg} ');
         }
         tabs.overview._.data.setContent(
           'Connections: ' + data.connections + '\n'
@@ -796,13 +796,12 @@ function start(stats, callback) {
       screen._.loader.load('Sending...');
 
       return sendTo(function(err, result) {
-        if (!result) {
-          err = new Error('Transaction not completed.');
-        }
-
-        if (err) {
+        if (err || !result) {
           tabs.send._.lock = false;
           screen._.loader.stop();
+          if (!err) {
+            err = new Error('Transaction not completed.');
+          }
           return screen._.msg.error(err.message);
         }
 
