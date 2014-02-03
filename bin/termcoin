@@ -1998,6 +1998,10 @@ function start(stats, callback) {
       tabs.receive._.list.setItems(items);
 
       // Transactions
+      if (stats.transactions.length > tabs.transactions._.list.ritems.length
+          && stats.transactions[0].category === 'receive') {
+        screen.program.bel();
+      }
       items = stats.transactions.reduce(function(out, t) {
         var s;
         if (t.category === 'move') {
