@@ -1036,7 +1036,7 @@ function start(stats, callback) {
 
       if (option === 'Sign Message') {
         // XXX Fix this in blessed - shouldn't have to do this:
-        screen.emit('keypress', '6', { name: '2' });
+        screen.emit('keypress', '6', { name: '6' });
         tabs.misc._.list.select(3);
         tabs.misc._.list.emit('keypress', '\r', { name: 'enter' });
         var i = screen._.picker.ritems.indexOf(address);
@@ -1312,7 +1312,7 @@ function start(stats, callback) {
 
       if (option === 'Verify Message') {
         // XXX Fix this in blessed - shouldn't have to do this:
-        screen.emit('keypress', '6', { name: '2' });
+        screen.emit('keypress', '6', { name: '6' });
         tabs.misc._.list.select(2);
         tabs.misc._.list.emit('keypress', '\r', { name: 'enter' });
         screen._.prompt._.input.setValue(address);
