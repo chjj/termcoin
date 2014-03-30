@@ -2299,7 +2299,7 @@ function readConf() {
 
   return data.reduce(function(out, line) {
     var parts = line.trim().split(/\s*=\s*/)
-      , key = parts[0]
+      , key = parts[0].replace(/\s/g, '').toLowerCase()
       , val = parts[1];
 
     if (!key) return out;
