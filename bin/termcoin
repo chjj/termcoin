@@ -2270,6 +2270,12 @@ function getPlatform(opt) {
       port = 41337;
       //port = 41338;
       break;
+    case 'vertcoin':
+      port = 5888;
+      break;  
+    case 'primecoin':
+      port = 9912;
+      break; 
     default:
       unknown = true;
       port = 18332;
