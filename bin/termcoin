@@ -40,33 +40,16 @@ var opt = parseArg(process.argv.slice())
  * API Calls
  */
 
+
 function getStats(callback) {
-  return getTotalBalance(function(err, balances) {
-    if (err) return callback(err);
-    return getAccounts(function(err, accounts) {
-      if (err) return callback(err);
-      return getTransactions(function(err, transactions) {
-        if (err) return callback(err);
-        return getAddresses(accounts, function(err, addresses) {
-          if (err) return callback(err);
-          return getInfo(function(err, info) {
-            if (err) return callback(err);
-            return isEncrypted(function(err, encrypted) {
-              if (err) return callback(err);
-              return callback(null, {
-                balances: balances,
-                accounts: accounts,
-                transactions: transactions,
-                addresses: addresses,
-                info: info,
-                encrypted: encrypted
-              });
-            });
-          });
-        });
-      });
-    });
-  });
+  parallel({
+    balance: getTotalBalance,
+    accounts: getAccounts,
+    transactions: getTransactions,
+    addresses: getAddresses,
+    info: getInfo,
+    encrypted: isEncrypted
+  }, callback);
 }
 
 // XXX Ridiculous workaround, but, short of including berkeley db bindings,
@@ -2601,6 +2584,28 @@ function forEach(obj, iter, done) {
   }
   obj.forEach(function(item, i) {
     iter(item, next, i);
+  });
+}
+
+function parallel(obj, done) {
+  var keys = Object.keys(obj)
+    , pending = keys.length
+    , results = null
+    , errs = null;
+
+  function next(key, err, result) {
+    if (err) {
+      errs = errs || [];
+      errs[key] = err;
+    } else {
+      results = results || [];
+      results[key] = result;
+    }
+    --pending || done(errs, results);
+  }
+
+  keys.forEach(function(key) {
+    obj[key](next.bind(null, key));
   });
 }
 
