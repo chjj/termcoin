@@ -2369,6 +2369,9 @@ function parseArg(argv) {
       case '--datadir':
         options.datadir = argv.shift();
         break;
+      case '--max-attempts':
+        options.maxAttempts = +argv.shift();
+        break;
       case '-?':
       case '-h':
       case '--help':
@@ -2392,6 +2395,10 @@ function parseArg(argv) {
 
   if (!options.currency) {
     options.currency = 'bitcoin';
+  }
+
+  if (!options.maxAttempts) {
+    options.maxAttempts = 30;
   }
 
   return options;
@@ -2530,7 +2537,7 @@ Client.prototype.request = function(options, callback) {
 
       if (err) {
         if (err.code === 'ECONNREFUSED' || err.message === 'socket hang up') {
-          if (++attempts === 30) {
+          if (++attempts === opt.maxAttempts) {
             return callback(err);
           }
           return setTimeout(function() {
