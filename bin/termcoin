@@ -1959,9 +1959,9 @@ function start(stats, callback) {
       // Wallet
       tabs.overview._.wallet.setContent(
         '{blue-fg}Balance{blue-fg}:     {yellow-fg}'
-        + stats.balances.balance.toFixed(8) + '{/yellow-fg}\n'
+        + stats.balance.balance.toFixed(8) + '{/yellow-fg}\n'
         + '{red-fg}Unconfirmed{red-fg}: {yellow-fg}'
-        + stats.balances.unconfirmed.toFixed(8) + '{/red-fg}');
+        + stats.balance.unconfirmed.toFixed(8) + '{/red-fg}');
 
       // Accounts
       var accounts = Object.keys(stats.accounts).map(function(key) {
@@ -2397,10 +2397,6 @@ function parseArg(argv) {
     options.currency = 'bitcoin';
   }
 
-  if (!options.maxAttempts) {
-    options.maxAttempts = 30;
-  }
-
   return options;
 }
 
@@ -2465,6 +2461,7 @@ function main(callback) {
 
 function Client(options) {
   this.options = options;
+  this.maxAttempts = options.maxAttempts || opt.maxAttempts || 30;
   this._id = 0;
 }
 
@@ -2597,18 +2594,19 @@ function forEach(obj, iter, done) {
 function parallel(obj, done) {
   var keys = Object.keys(obj)
     , pending = keys.length
-    , results = null
-    , errs = null;
+    , results = []
+    , errs = [];
 
   function next(key, err, result) {
     if (err) {
-      errs = errs || [];
-      errs[key] = err;
+      errs.push(err.message);
     } else {
-      results = results || [];
       results[key] = result;
     }
-    --pending || done(errs, results);
+    if (--pending) return;
+    return errs.length
+      ? done(new Error(errs.join('\n')))
+      : done(null, results);
   }
 
   keys.forEach(function(key) {
