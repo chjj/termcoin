@@ -2516,9 +2516,9 @@ Client.prototype.request = function(options, callback) {
     method: method,
     uri: (this.options.ssl ? 'https' : 'http')
       + '://'
-      + this.options.user
+      + encodeURIComponent(this.options.user)
       + ':'
-      + this.options.pass
+      + encodeURIComponent(this.options.pass)
       + '@'
       + this.options.host
       + ':'
