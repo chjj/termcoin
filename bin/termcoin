@@ -25,333 +25,22 @@ var fs = require('fs')
   , StringDecoder = require('string_decoder').StringDecoder
   , qs = require('querystring');
 
-var blessed = require('blessed')
-  , mock = require('../lib/mock');
+var blessed = require('blessed');
 
-var opt = parseArg(process.argv.slice())
-  , platform = getPlatform(opt)
-  , config = readConf()
+var termcoin = require('../')
+  , config = termcoin.config
+  , backend = termcoin.backend
+  , mock = termcoin.mock
+  , opt = config.opt
+  , platform = config.platform
   , now = Date.now()
-  , decryptTime = 0
-  , platform
-  , client;
+  , decryptTime = 0;
 
 /**
  * API Calls
  */
 
-
-function getStats(callback) {
-  parallel({
-    balance: getTotalBalance,
-    accounts: getAccounts,
-    transactions: getTransactions,
-    addresses: getAddresses,
-    info: getInfo,
-    encrypted: isEncrypted
-  }, callback);
-}
-
-// XXX Ridiculous workaround, but, short of including berkeley db bindings,
-// this is the only way to extract "send" addresses from the wallet.dat.
-function getAddresses(accounts, callback) {
-  if (opt.remote) return callback(null, []);
-
-  if (!callback) {
-    callback = accounts;
-    accounts = null;
-  }
-
-  var wallet
-    , results = []
-    , ma = []
-    , m;
-
-  try {
-    wallet = fs.readFileSync(platform.wallet, 'ascii');
-  } catch (e) {
-    return callback(null, results);
-  }
-
-  // Bitcoin addresses are 27-35 bytes in length.
-  // https://bitcointalk.org/index.php?topic=1026.0
-  do {
-    if (m = /^[a-zA-Z1-9]{27}/g.exec(wallet)) ma.push(m[0]);
-    if (m = /^[a-zA-Z1-9]{28}/g.exec(wallet)) ma.push(m[0]);
-    if (m = /^[a-zA-Z1-9]{29}/g.exec(wallet)) ma.push(m[0]);
-    if (m = /^[a-zA-Z1-9]{30}/g.exec(wallet)) ma.push(m[0]);
-    if (m = /^[a-zA-Z1-9]{31}/g.exec(wallet)) ma.push(m[0]);
-    if (m = /^[a-zA-Z1-9]{32}/g.exec(wallet)) ma.push(m[0]);
-    if (m = /^[a-zA-Z1-9]{33}/g.exec(wallet)) ma.push(m[0]);
-    if (m = /^[a-zA-Z1-9]{34}/g.exec(wallet)) ma.push(m[0]);
-    if (m = /^[a-zA-Z1-9]{35}/g.exec(wallet)) ma.push(m[0]);
-  } while (wallet = wallet.substring(1));
-
-  if (!ma.length) {
-    return callback(null, results);
-  }
-
-  return forEach(ma, function(address, next) {
-    return client.call('getaccount', [address], function(err, name) {
-      if (err) return next();
-      results.push({
-        name: name,
-        address: address
-      });
-      return next();
-    });
-  }, function() {
-    if (accounts) {
-      // Exclude the user's addresses.
-      var add = Object.keys(accounts).map(function(key) {
-        return accounts[key].address;
-      });
-      results = results.filter(function(item) {
-        return add.indexOf(item.address) === -1;
-      });
-    }
-    return callback(null, results);
-  });
-}
-
-function getAccounts(callback) {
-  var results = {};
-  return client.call('listaccounts', function(err, accounts) {
-    if (err) return callback(err);
-    return forEach(Object.keys(accounts), function(name, next) {
-      return client.call('getaddressesbyaccount', [name], function(err, addresses) {
-        if (err) return next();
-        addresses.forEach(function(address) {
-          results[address] = {
-            name: name,
-            address: address,
-            balance: accounts[name]
-          };
-        });
-        return next();
-      });
-    }, function() {
-      return callback(null, results);
-    });
-  });
-}
-
-function getProgress(callback) {
-  // This is kind of awkward, but in order to calculate
-  // the number of hours behind we are, we need to:
-  //   1. Get the hash of the genesis block.
-  //   2. Retrieve the genesis block based on the hash.
-  //   3. Get the current block count (how many we have so far).
-  //   4. Get the hash of the latest block using the block count.
-  //   5. Get our latest block using the hash.
-  //   6. Use the timestamps on the genesis block as well as our latest block,
-  //   and compare them with the current time to determine the amount of time
-  //   beind we are. This isn't perfectly accurate because `Date.now()` doesn't
-  //   necessary represent the time the last block was found.
-  return client.call('getconnectioncount', function(err, connections) {
-    if (err) return callback(err);
-    return client.call('getblockhash', [0], function(err, hash) {
-      if (err) return callback(err);
-      return client.call('getblock', [hash], function(err, genesis) {
-        if (err) return callback(err);
-        return client.call('getblockcount', function(err, count) {
-          if (err) return callback(err);
-          return client.call('getblockhash', [count], function(err, hash) {
-            if (err) return callback(err);
-            return client.call('getblock', [hash], function(err, current) {
-              if (err) return callback(err);
-
-              var beginning = genesis.time
-                , end = Date.now() / 1000 | 0
-                , left = end - current.time
-                , perc = ((current.time - beginning) / (end - beginning)) * 100 | 0;
-
-              return callback(null, {
-                blocks: count,
-                connections: connections,
-                genesisBlock: genesis,
-                currentBlock: current,
-                hoursBehind: left / 60 / 60 | 0,
-                daysBehind: left / 60 / 60 / 24 | 0,
-                percent: perc
-              });
-            });
-          });
-        });
-      });
-    });
-  });
-}
-
-function getInfo(callback) {
-  return client.call('getinfo', callback);
-}
-
-function getTransactions(callback) {
-  if (opt.mock) {
-    return callback(null, tsort(mock.transactions, true));
-  }
-  return client.call('listtransactions', ['*', 1000], function(err, transactions) {
-    if (err) return callback(err);
-    return callback(null, tsort(transactions, true));
-  });
-}
-
-function getTotalBalance(callback) {
-  return client.call('getbalance', ['*', 6], function(err, balance) {
-    if (err) return callback(err);
-    return client.call('getbalance', ['*', 0], function(err, unconfirmed) {
-      if (err) return callback(err);
-      unconfirmed -= balance;
-      return callback(null, {
-        balance: balance,
-        unconfirmed: unconfirmed
-      });
-    });
-  });
-}
-
-function signMessage(address, message, callback) {
-  return client.call('signmessage', [address, message], callback);
-}
-
-function verifyMessage(address, sig, message, callback) {
-  return client.call('verifymessage', [address, sig, message], callback);
-}
-
-function createAddress(name, callback) {
-  return client.call('getnewaddress', [name], callback);
-}
-
-function listReceivedByAddress(address, callback) {
-  if (opt.mock) return callback(null, received);
-  return client.call('listreceivedbyaddress', [address, sig, message], callback);
-}
-
-function backupWallet(path, callback) {
-  return client.call('backupwallet', [path], callback);
-}
-
-function encryptWallet(passphrase, callback) {
-  return client.call('encryptwallet', [passphrase], callback);
-}
-
-function decryptWallet(passphrase, timeout, callback) {
-  return client.call('walletpassphrase', [passphrase, timeout], function(err) {
-    if (err) {
-      if (~err.message.indexOf('Wallet is already unlocked')) {
-        return callback();
-      }
-      return callback(err);
-    }
-    return callback();
-  });
-}
-
-function changePassphrase(opassphrase, npassphrase, callback) {
-  return client.call('walletpassphrasechange', [opassphrase, npassphrase], callback);
-}
-
-function forgetKey(callback) {
-  return client.call('walletlock', callback);
-}
-
-function isEncrypted(callback) {
-  return client.call('walletpassphrase', [], function(err) {
-    if (err) {
-      if (err.code === -15 && ~err.message.indexOf('unencrypted wallet')) {
-        return callback(null, false);
-      }
-      if (~err.message.indexOf('walletpassphrase <passphrase> <timeout>')) {
-        return callback(null, true);
-      }
-      return callback(err);
-    }
-    return callback(null, true);
-  });
-}
-
-function send(address, amount, callback) {
-  return client.call('sendtoaddress', [address, amount], callback);
-}
-
-function sendFrom(from, address, amount, callback) {
-  return client.call('sendfrom', [from, address, amount], callback);
-}
-
-function move(from, to, amount, callback) {
-  return client.call('move', [from, to, amount], callback);
-}
-
-/**
- * Start Server
- */
-
-function startServer(callback) {
-  if (opt.remote) return callback(null, false);
-
-  try {
-    fs.statSync(platform.pid);
-    if (!startServer._ran) {
-      startServer._ran = true;
-    }
-    return callback(null, false);
-  } catch (e) {
-    ;
-  }
-
-  // Temporarily disable smart port handling:
-  // config.rpcport = 9999;
-  // client.options.port = 9999;
-
-  if (!startServer._ran) {
-    startServer._ran = true;
-    startServer.started = true;
-    console.log('Starting new server on port ' + config.rpcport + '...');
-  }
-
-  var args = [
-    '-server',
-    '-daemon',
-    '-rpcallowip=127.0.0.1'
-  ];
-
-  if (config.rpcuser !== config.original.rpcuser) {
-    args.push('-rpcuser=' + config.rpcuser);
-  }
-
-  if (config.rpcpassword !== config.original.rpcpassword) {
-    args.push('-rpcpassword=' + config.rpcpassword);
-  }
-
-  if (+config.rpcport !== +config.original.rpcport) {
-    // This `if` statement is most likely unnecessary,
-    // but we'll keep it here for neatness. Removing
-    // might have the benefit of compensating if one
-    // of the platforms changes the default port in
-    // the future.
-    if (config.original.rpcport
-        || +config.rpcport !== +platform.port
-        || platform.unknown) {
-      args.push('-rpcport=' + config.rpcport);
-    }
-  }
-
-  if (opt.datadir) {
-    args.push('-datadir=' + opt.datadir);
-    args.push('-conf=' + platform.config);
-  }
-
-  return daemonize(platform.daemon, args, function(err) {
-    if (err) return callback(err);
-    return client.call('listaccounts', function(err) {
-      if (err) {
-        return callback(err);
-      }
-      return callback(null, true);
-    });
-  });
-}
+var backend = termcoin.backend;
 
 /**
  * Start
@@ -529,7 +218,7 @@ function start(stats, callback) {
   });
 
   (function self() {
-    return getProgress(function(err, data) {
+    return backend.getProgress(function(err, data) {
       if (data) {
         if (data.hoursBehind > 2) {
           tabs.overview._.wallet._label.setContent(
@@ -763,17 +452,17 @@ function start(stats, callback) {
 
       var checkLabel = function(callback) {
         if (!data.label) return callback();
-        return client.call('setaccount', [data.address, data.label], callback);
+        return backend.setAccount(data.address, data.label, callback);
       };
 
       var sendTo = function(callback) {
         if (data.from) {
           if (data.move) {
-            return move(data.from, data.address, +data.amount);
+            return backend.move(data.from, data.address, +data.amount);
           }
-          return sendFrom(data.from, data.address, +data.amount, callback);
+          return backend.sendFrom(data.from, data.address, +data.amount, callback);
         }
-        return send(data.address, +data.amount, callback);
+        return backend.send(data.address, +data.amount, callback);
       };
 
       screen._.loader.load('Sending...');
@@ -895,7 +584,7 @@ function start(stats, callback) {
       return screen._.msg.error('Not supported.');
 
       // Does not delete.
-      return client.call('setaccount', [address], function(err) {
+      return backend.setAccount(address, function(err) {
         if (err) return screen._.msg.error(err.message);
         text = 'Deleted address: {blue-fg}' + address + '{/blue-fg}';
         screen._.msg.display(text);
@@ -916,7 +605,7 @@ function start(stats, callback) {
       return screen._.prompt.type(text, '', function(err, value) {
         if (err) return screen._.msg.error(err.message);
         if (value == null) return screen.render();
-        return createAddress(value, function(err, address) {
+        return backend.createAddress(value, function(err, address) {
           if (err) return screen._.msg.error(err.message);
           text = 'Created address: {blue-fg}' + address + '{/blue-fg}';
           screen._.msg.display(text);
@@ -960,7 +649,7 @@ function start(stats, callback) {
 
           // Does not associate address with new account name, just creates a
           // new account with a new address.
-          return client.call('setaccount', [address, newLabel], function(err) {
+          return backend.setAccount(address, newLabel, function(err) {
             if (err) return screen._.msg.error(err.message);
             text = 'Edited label: {blue-fg}'
               + label + '->' + (newLabel || '[none]') + '{/blue-fg}';
@@ -1104,7 +793,7 @@ function start(stats, callback) {
           if (opt.mock) {
             return callback(null, mock.transaction);
           }
-          return client.call('gettransaction', [id], callback);
+          return backend.getTransaction(id, callback);
         };
 
         return getTransaction(tx.txid, function(err, transaction) {
@@ -1171,7 +860,7 @@ function start(stats, callback) {
       return screen._.msg.error('Not supported.');
 
       // Does not delete.
-      return client.call('setaccount', [address], function(err) {
+      return backend.setAccount(address, function(err) {
         if (err) return screen._.msg.error(err.message);
         text = 'Deleted address: {blue-fg}' + address + '{/blue-fg}';
         screen._.msg.display(text);
@@ -1196,7 +885,7 @@ function start(stats, callback) {
         return screen._.prompt.type(text, '', function(err, address) {
           if (err) return screen._.msg.error(err.message);
           if (!address) return screen.render();
-          return client.call('setaccount', [address, label], function(err) {
+          return backend.setAccount(address, label, function(err) {
             if (err) return screen._.msg.error(err.message);
             text = 'Created address: {blue-fg}' + label + '{/blue-fg}';
             screen._.msg.display(text);
@@ -1240,7 +929,7 @@ function start(stats, callback) {
 
           // For some reason this *creates* a receivable address by the same
           // account name, but different address.
-          return client.call('setaccount', [address, newLabel], function(err) {
+          return backend.setAccount(address, newLabel, function(err) {
             if (err) return screen._.msg.error(err.message);
             text = 'Edited label: {blue-fg}'
               + label + '->' + (newLabel || '[none]') + '{/blue-fg}';
@@ -1356,7 +1045,7 @@ function start(stats, callback) {
   });
 
   process.on('uncaughtException', function(err) {
-    if (client.lock) return;
+    if (backend.lock) return;
     console.error(err.stack);
     process.exit(1);
   });
@@ -1365,7 +1054,7 @@ function start(stats, callback) {
     var text = el.getText();
 
     if (text === 'Encrypt Wallet') {
-      return isEncrypted(function(err, encrypted) {
+      return backend.isEncrypted(function(err, encrypted) {
         if (err) return screen._.msg.error(err.message);
         if (encrypted) {
           screen._.prompt._.input.censor = true;
@@ -1386,7 +1075,7 @@ function start(stats, callback) {
                 if (npassphrase !== verify) {
                   return screen._.msg.error('Passphrases do not match.');
                 }
-                return changePassphrase(opassphrase, npassphrase, function(err) {
+                return backend.changePassphrase(opassphrase, npassphrase, function(err) {
                   if (err) return screen._.msg.error(err.message);
                   return screen._.msg.display('Passphrase changed.');
                 });
@@ -1408,18 +1097,18 @@ function start(stats, callback) {
               return screen._.msg.error('Passphrases do not match.');
             }
             screen.render();
-            return encryptWallet(passphrase, function(err) {
+            return backend.encryptWallet(passphrase, function(err) {
               if (err) return screen._.msg.error(err.message);
               if (opt.remote) {
                 return screen._.msg.display('Wallet is now encrypted.');
               }
-              client.lock = true;
+              backend.lock = true;
               screen._.loader.load('Restarting server...');
               return setTimeout(function() {
                 return fs.unlink(platform.pid, function() {
-                  return startServer(function() {
-                    client.lock = false;
-                    return decryptWallet(passphrase, 60 * 60, function() {
+                  return backend.startServer(function() {
+                    backend.lock = false;
+                    return backend.decryptWallet(passphrase, 60 * 60, function() {
                       screen._.loader.stop();
                       decryptTime = Date.now();
                       return screen._.msg.display('Wallet is now encrypted.');
@@ -1451,7 +1140,7 @@ function start(stats, callback) {
           file = file.replace(/\/+$/, '') + '/wallet.dat.bak';
         }
 
-        return backupWallet(file, function(err) {
+        return backend.backupWallet(file, function(err) {
           if (err) return screen._.msg.error(err.messsage);
           screen._.msg.display('Wallet successfully backed up.');
           screen.render();
@@ -1469,7 +1158,7 @@ function start(stats, callback) {
           return screen._.prompt.type('Message:', '', function(err, message) {
             if (err) return screen._.msg.error(err.message);
             if (message == null) return screen.render();
-            return verifyMessage(address, sig, message, function(err, result) {
+            return backend.verifyMessage(address, sig, message, function(err, result) {
               if (err) return screen._.msg.error(err.message);
               if (!result) {
                 return screen._.msg.error('Not verified.');
@@ -1491,7 +1180,7 @@ function start(stats, callback) {
           return screen._.prompt.type('Message:', '', function(err, message) {
             if (err) return screen._.msg.error(err.message);
             if (message == null) return screen.render();
-            return signMessage(address, message, function(err, signature) {
+            return backend.signMessage(address, message, function(err, signature) {
               if (err) return screen._.msg.error(err.message);
               if (signature == null) return screen.render();
               return screen._.msg.display('Signature:\n' + signature, -1);
@@ -1503,17 +1192,17 @@ function start(stats, callback) {
 
     if (text === 'Rescan Block Chain') {
       screen._.loader.load('Rescanning (this may take a while)...');
-      client.call('stop', function(err) {
+      backend.stopServer(function(err) {
         if (err) {
-          client.lock = false;
+          backend.lock = false;
           screen._.loader.stop();
           return screen._.msg.error(err.message);
         }
         return setTimeout(function() {
           return cp.execFile(platform.daemon, ['-rescan'], function(err, stdout, stderr) {
             if (err || stderr) {
-              return startServer(function(err_) {
-                client.lock = false;
+              return backend.startServer(function(err_) {
+                backend.lock = false;
                 screen._.loader.stop();
                 if (err_) {
                   screen.leave();
@@ -1523,8 +1212,8 @@ function start(stats, callback) {
                 return screen._.msg.error(stderr || err.message);
               });
             }
-            return startServer(function(err) {
-              client.lock = false;
+            return backend.startServer(function(err) {
+              backend.lock = false;
               screen._.loader.stop();
               if (err) {
                 screen.leave();
@@ -1536,7 +1225,7 @@ function start(stats, callback) {
           });
         }, 12 * 1000);
       });
-      client.lock = true;
+      backend.lock = true;
       return;
     }
 
@@ -1544,7 +1233,7 @@ function start(stats, callback) {
       return screen._.prompt.type('Transaction Fee:', '0', function(err, value) {
         if (err) return screen._.msg.error(err.message);
         if (value == null) return screen.render();
-        return client.call('settxfee', [+value], function(err) {
+        return backend.setTxFee(+value, function(err) {
           if (err) return screen._.msg.error(err.message);
           return screen._.msg.display('Successfully set transaction fee.');
         });
@@ -1565,7 +1254,7 @@ function start(stats, callback) {
               if (rescan) {
                 screen._.loader.load('Rescanning (this may take a while)...');
               }
-              return client.call('importprivkey', [key, label, !!rescan], function(err) {
+              return backend.importPrivKey(key, label, !!rescan, function(err) {
                 if (rescan) screen._.loader.stop();
                 if (err) return screen._.msg.error(err.message);
                 return screen._.msg.display('Successfully set transaction fee.');
@@ -1583,7 +1272,7 @@ function start(stats, callback) {
         return screen._.picker.pick(function(err, address) {
           if (err) return screen._.msg.error(err.message);
           if (address == null) return screen.render();
-          return client.call('dumpprivkey', [address], function(err, key) {
+          return backend.dumpPrivKey(address, function(err, key) {
             if (err) return screen._.msg.error(err.message);
             return screen._.msg.display('Private Key: ' + key);
           });
@@ -1595,7 +1284,7 @@ function start(stats, callback) {
       return checkEncrypt(function(err) {
         if (err) return screen._.msg.error(err.message);
         screen._.loader.load('Refilling key pool...');
-        return client.call('keypoolrefill', function(err, key) {
+        return backend.keyPoolRefill(function(err, key) {
           screen._.loader.stop();
           if (err) return screen._.msg.error(err.message);
           return screen._.msg.display('Key pool refill complete.');
@@ -1604,17 +1293,17 @@ function start(stats, callback) {
     }
 
     if (text === 'Toggle Coin Generation') {
-      return client.call('getgenerate', function(err, generating) {
+      return backend.getGenerate(function(err, generating) {
         if (err) return screen._.msg.error(err.message);
         if (generating) {
-          return client.call('setgenerate', [false], function(err, key) {
+          return backend.setGenerate(false, function(err, key) {
             if (err) return screen._.msg.error(err.message);
             return screen._.msg.display('Stopped mining.');
           });
         }
         return screen._.prompt.type('Threads? (-1 for no. of cores)', '1', function(err, threads) {
           if (err) return screen._.msg.error(err.message);
-          return client.call('setgenerate', [true, +threads], function(err, key) {
+          return backend.setGenerate(true, +threads, function(err, key) {
             if (err) return screen._.msg.error(err.message);
             return screen._.msg.display('Mining!');
           });
@@ -1623,7 +1312,7 @@ function start(stats, callback) {
     }
 
     if (text === 'Get Mining Info') {
-      return client.call('getmininginfo', function(err, info) {
+      return backend.getMiningInfo(function(err, info) {
         if (err) return screen._.msg.error(err.message);
         return screen._.msg.display(inspect(info), -1);
       });
@@ -1894,8 +1583,8 @@ function start(stats, callback) {
       if (value == null) {
         return screen.render();
       }
-      return forgetKey(function() {
-        return decryptWallet(value, 60 * 60, function(err, result) {
+      return backend.forgetKey(function() {
+        return backend.decryptWallet(value, 60 * 60, function(err, result) {
           if (err) {
             screen.render();
             return callback(err);
@@ -1928,7 +1617,7 @@ function start(stats, callback) {
     // showLoad = false;
     refresh.lock = false;
 
-    if (client.lock) return done();
+    if (backend.lock) return done();
 
     if (screen._.prompt.visible
         || screen._.question.visible
@@ -1941,8 +1630,8 @@ function start(stats, callback) {
       screen._.loader.load('Loading...');
     }
 
-    return getStats(function(err, stats_) {
-      if (client.lock) {
+    return backend.getStats(function(err, stats_) {
+      if (backend.lock) {
         if (showLoad) screen._.loader.stop();
         return done();
       }
@@ -2095,8 +1784,8 @@ function start(stats, callback) {
   });
 
   function exit() {
-    if (startServer.started) {
-      return client.call('stop', function() {
+    if (backend.startServer.started) {
+      return backend.stopServer(function() {
         return callback();
       });
     }
@@ -2232,220 +1921,13 @@ function tailBox(file, box) {
 }
 
 /**
- * Options
- */
-
-function getPlatform(opt) {
-  var name = opt.currency || 'bitcoin'
-    , conf = name
-    , dir = opt.datadir || process.env.HOME + '/.' + name
-    , unknown = false
-    , port = 8332;
-
-  switch (name) {
-    case 'bitcoin':
-      port = 8332;
-      break;
-    case 'litecoin':
-      port = 9332;
-      //port = 9333;
-      break;
-    case 'namecoin':
-      port = 8334;
-      conf = 'bitcoin';
-      break;
-    case 'dogecoin':
-      port = 22555;
-      //port = 22556;
-      break;
-    case 'coinyecoin':
-      port = 41337;
-      //port = 41338;
-      break;
-    case 'vertcoin':
-      port = 5888;
-      break;
-    case 'primecoin':
-      port = 9912;
-      break;
-    default:
-      unknown = true;
-      port = 18332;
-      break;
-  }
-
-  return {
-    name: name,
-    daemon: name + 'd',
-    config: dir + '/' + conf + '.conf',
-    wallet: dir + '/wallet.dat',
-    log: dir + '/debug.log',
-    pid: dir + '/' + name + 'd.pid',
-    port: port,
-    unknown: unknown
-  };
-}
-
-function readConf() {
-  var data;
-
-  try {
-    data = fs.readFileSync(platform.config, 'utf8');
-  } catch (e) {
-    return { original: {} };
-  }
-
-  data = data.trim().split(/(\r?\n)+/);
-
-  return data.reduce(function(out, line) {
-    var parts = line.trim().split(/\s*=\s*/)
-      , key = parts[0].replace(/\s/g, '').toLowerCase()
-      , val = parts[1];
-
-    if (!key) return out;
-
-    out[key] = val;
-    out.original[key] = val;
-
-    return out;
-  }, { original: {} });
-}
-
-function parseArg(argv) {
-  var argv = argv.slice(2)
-    , options = {}
-    , files = [];
-
-  function getarg() {
-    var arg = argv.shift();
-
-    if (arg.indexOf('--') === 0) {
-      // e.g. --opt
-      arg = arg.split('=');
-      if (arg.length > 1) {
-        // e.g. --opt=val
-        argv.unshift(arg.slice(1).join('='));
-      }
-      arg = arg[0];
-    } else if (arg[0] === '-') {
-      if (arg.length > 2) {
-        // e.g. -abc
-        argv = arg.substring(1).split('').map(function(ch) {
-          return '-' + ch;
-        }).concat(argv);
-        arg = argv.shift();
-      } else {
-        // e.g. -a
-      }
-    } else {
-      // e.g. foo
-    }
-
-    return arg;
-  }
-
-  while (argv.length) {
-    arg = getarg();
-    switch (arg) {
-      case '-c':
-      case '--currency':
-        options.currency = argv.shift();
-        break;
-      case '-s':
-      case '--server':
-        options.server = url.parse(argv.shift());
-        if (options.server.auth) {
-          var parts = options.server.auth.split(':');
-          options.server.user = parts[0];
-          options.server.password = parts[1] || '';
-        }
-        options.host = options.server.hostname;
-        options.port = +options.server.port;
-        options.user = options.server.user;
-        options.password = options.server.password;
-        options.ssl = options.server.protocol === 'https:';
-        break;
-      case '-d':
-      case '--datadir':
-        options.datadir = argv.shift();
-        break;
-      case '--max-attempts':
-        options.maxAttempts = +argv.shift();
-        break;
-      case '-?':
-      case '-h':
-      case '--help':
-        return help();
-      case '--debug':
-        options.debug = true;
-        break;
-      case '--mock':
-        options.mock = true;
-        break;
-      default:
-        if (~arg.indexOf('://')) {
-          argv.unshift(arg);
-          argv.unshift('-s');
-        } else {
-          files.push(arg);
-        }
-        break;
-    }
-  }
-
-  if (!options.currency) {
-    options.currency = 'bitcoin';
-  }
-
-  return options;
-}
-
-function help() {
-  var options = {
-    cwd: process.cwd(),
-    env: process.env,
-    setsid: false,
-    customFds: [0, 1, 2]
-  };
-
-  cp.spawn('man',
-    [__dirname + '/../man/termcoin.1'],
-    options);
-
-  // Kill the current stack.
-  process.once('uncaughtException', function() {});
-  throw 'stop';
-}
-
-/**
  * Main
  */
 
 function main(callback) {
-  if (opt.host
-      && opt.host !== 'localhost'
-      && opt.host !== '127.0.0.1'
-      && opt.host !== '::1') {
-    opt.remote = true;
-  }
-
-  config.rpcconnect = opt.host || config.rpcconnect || 'localhost';
-  config.rpcport = opt.port || config.rpcport || platform.port;
-  config.rpcuser = opt.user || config.rpcuser || 'coinrpc';
-  config.rpcpassword = opt.password || config.rpcpassword || 'foobar';
-  config.rpcssl = opt.ssl || config.rpcssl || false;
-
-  client = new Client({
-    host: config.rpcconnect,
-    port: config.rpcport,
-    user: config.rpcuser,
-    pass: config.rpcpassword,
-    ssl: config.rpcssl
-  });
-
-  return startServer(function(err) {
+  return backend.startServer(function(err) {
     if (err) return callback(err);
-    return getStats(function(err, stats) {
+    return backend.getStats(function(err, stats) {
       if (err) return callback(err);
       return start(stats, function(err) {
         if (err) return callback(err);
@@ -2456,163 +1938,8 @@ function main(callback) {
 }
 
 /**
- * Client
- */
-
-function Client(options) {
-  this.options = options;
-  this.maxAttempts = options.maxAttempts || opt.maxAttempts || 30;
-  this._id = 0;
-}
-
-Client.prototype.call = function(method, params, callback) {
-  if (!callback) {
-    callback = params;
-    params = [];
-  }
-  return this._call({ method: method, params: params }, callback);
-};
-
-Client.prototype._call = function(call, options, callback) {
-  var self = this;
-
-  if (!callback) {
-    callback = options;
-    options = {};
-  }
-
-  if (Array.isArray(call)) {
-    options.body = call.map(function(item) {
-      return {
-        id: self._id++,
-        method: item.method,
-        params: item.params
-      };
-    });
-  } else {
-    options.body = {
-      id: self._id++,
-      method: call.method,
-      params: call.params
-    };
-  }
-
-  return this.request(options, callback);
-};
-
-Client.prototype.request = function(options, callback) {
-  var self = this
-    , path = options.path || '/'
-    , body = options.body || {}
-    , method = options.method || 'POST'
-    , cb = callback
-    , attempts = 0;
-
-  if (typeof callback !== 'function') {
-    callback = function() {};
-  }
-
-  options = {
-    method: method,
-    uri: (this.options.ssl ? 'https' : 'http')
-      + '://'
-      + encodeURIComponent(this.options.user)
-      + ':'
-      + encodeURIComponent(this.options.pass)
-      + '@'
-      + this.options.host
-      + ':'
-      + this.options.port
-      + path,
-    json: body
-  };
-
-  (function retry() {
-    if (self.lock) return callback(null, {});
-    return request(options, function(err, res, body) {
-      if (self.lock) return callback(null, {});
-
-      if (err) {
-        if (err.code === 'ECONNREFUSED' || err.message === 'socket hang up') {
-          if (++attempts === opt.maxAttempts) {
-            return callback(err);
-          }
-          return setTimeout(function() {
-            return retry();
-          }, 1000);
-        }
-        return callback(err);
-      }
-
-      if (res.statusCode === 403 || res.statusCode === 401) {
-        return callback(new Error('Forbidden.'));
-      }
-
-      if (res.statusCode === 404) {
-        return callback(new Error('Not found.'));
-      }
-
-      try {
-        if (typeof body === 'string') {
-          body = JSON.parse(body);
-        }
-      } catch (e) {
-        e.message += '\nStatus code: ' + res.statusCode + '.';
-        e.message += '\nJSON: ' + body;
-        return callback(e);
-      }
-
-      if (!body) {
-        return callback(new Error('No body.'));
-      }
-
-      if (body.error) {
-        err = new Error(body.error.message);
-        err.code = body.error.code;
-        return callback(err);
-      }
-
-      return callback(null, body.result);
-    });
-  })();
-};
-
-/**
  * Helpers
  */
-
-function forEach(obj, iter, done) {
-  var pending = obj.length;
-  function next() {
-    --pending || done();
-  }
-  obj.forEach(function(item, i) {
-    iter(item, next, i);
-  });
-}
-
-function parallel(obj, done) {
-  var keys = Object.keys(obj)
-    , pending = keys.length
-    , results = []
-    , errs = [];
-
-  function next(key, err, result) {
-    if (err) {
-      errs.push(err.message);
-    } else {
-      results[key] = result;
-    }
-    if (--pending) return;
-    return errs.length
-      ? done(new Error(errs.join('\n')))
-      : done(null, results);
-  }
-
-  keys.forEach(function(key) {
-    obj[key](next.bind(null, key));
-  });
-}
 
 function inspect(obj) {
   return typeof obj !== 'string'
@@ -2634,119 +1961,6 @@ function tsort(obj, desc) {
       ? b.time - a.time
       : a.time - b.time;
   });
-}
-
-function daemonize(file, args, callback) {
-  var v = process.version.substring(1).split('.');
-
-  // `detached` didn't exist pre-0.7.10.
-  if (+v[0] === 0 && +v[1] <= 7 && +v[2] < 10) {
-    args = file + ' ' + args.join(' ');
-    return cp.exec('(setsid ' + args + ' > /dev/null 2>& 1 &)', callback);
-  }
-
-  cp.spawn(file, args, {
-    stdio: ['ignore', 'ignore', 'ignore'],
-    detached: true
-  });
-
-  setTimeout(callback.bind(null, null, null), 1000);
-}
-
-function request(options, callback) {
-  if (typeof options === 'string' || options.hostname) {
-    options = { uri: options };
-  }
-
-  var uri = options.uri || options.url
-    , body = options.json
-        ? JSON.stringify(options.json)
-        : options.body || '';
-
-  if (typeof uri !== 'object') {
-    uri = url.parse(uri);
-  }
-
-  if (options.qs) {
-    var query = uri.query ? qs.parse(uri.query) : {};
-    Object.keys(options.qs).forEach(function(key) {
-      query[key] = options.qs[key];
-    });
-    uri.path = uri.pathname + '?' + qs.stringify(query);
-  }
-
-  var protocol = uri.prototype === 'https:'
-    ? require('https')
-    : http;
-
-  options.method = options.method || (body ? 'POST' : 'GET');
-  options.method = options.method.toUpperCase();
-  options.headers = options.headers || {};
-
-  if (options.json) {
-    options.headers['Content-Type'] = 'application/json; charset=utf-8';
-    options.headers['Accept'] = 'application/json';
-  }
-
-  if (options.method !== 'GET' && options.method !== 'HEAD') {
-    options.headers['Content-Length'] = Buffer.byteLength(body);
-  }
-
-  var opt = {
-    auth: uri.auth,
-    host: uri.hostname,
-    port: uri.port || (protocol === http ? 80 : 443),
-    path: uri.path,
-    method: options.method,
-    headers: options.headers
-  };
-
-  var req = protocol.request(opt);
-
-  req.on('error', function(err) {
-    callback(err);
-  });
-
-  req.on('response', function(res) {
-    var decoder = new StringDecoder('utf8')
-      , done = false
-      , body = '';
-
-    function end() {
-      if (done) return;
-      done = true;
-      res.body = body;
-      if (options.json) {
-        try {
-          body = JSON.parse(body);
-        } catch (e) {
-          ;
-        }
-      }
-      res.socket.removeListener('error', error);
-      res.socket.removeListener('end', end);
-      callback(null, res, body);
-    }
-
-    function error(err) {
-      res.destroy();
-      callback(err);
-    }
-
-    res.on('data', function(data) {
-      body += decoder.write(data);
-    });
-
-    res.on('error', error);
-    res.socket.on('error', error);
-
-    res.on('end', end);
-    // An agent socket's `end` sometimes
-    // wont be emitted on the response.
-    res.socket.on('end', end);
-  });
-
-  req.end(body);
 }
 
 /**
