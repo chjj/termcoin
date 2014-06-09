@@ -53,23 +53,47 @@ termcoin is written in node.js, using [blessed][blessed], and uses bitcoind
 
 ## Screenshots
 
-![overview 1](https://i.imgur.com/r0w7bHD.png)
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/01.png)
 
-![send address menu middle 5](https://i.imgur.com/sYzTE4v.png)
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/02.png)
 
-![receive menu 8](https://i.imgur.com/TCX6kLW.png)
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/03.png)
 
-![receive qr code 9](https://i.imgur.com/SYfeRGu.png)
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/04.png)
 
-![transactions menu 11](https://i.imgur.com/vjR3Yha.png)
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/05.png)
 
-![transaction details 12](https://i.imgur.com/lMZCITM.png)
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/06.png)
 
-![addresses menu 13](https://i.imgur.com/Q434liE.png)
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/07.png)
 
-![misc encrypt prompt 15](https://i.imgur.com/nxMOg45.png)
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/08.png)
 
-![logs 16](https://i.imgur.com/RqV50K6.png)
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/09.png)
+
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/10.png)
+
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/11.png)
+
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/12.png)
+
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/13.png)
+
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/14.png)
+
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/15.png)
+
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/16.png)
+
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/17.png)
+
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/18.png)
+
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/19.png)
+
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/20.png)
+
+![](https://raw.githubusercontent.com/chjj/termcoin/master/img/21.png)
 
 ## Install
 
