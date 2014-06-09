@@ -87,13 +87,7 @@ termcoin is written in node.js, using [blessed][blessed], and uses bitcoind
 
 ![](https://raw.githubusercontent.com/chjj/termcoin/master/img/17.png)
 
-![](https://raw.githubusercontent.com/chjj/termcoin/master/img/18.png)
-
 ![](https://raw.githubusercontent.com/chjj/termcoin/master/img/19.png)
-
-![](https://raw.githubusercontent.com/chjj/termcoin/master/img/20.png)
-
-![](https://raw.githubusercontent.com/chjj/termcoin/master/img/21.png)
 
 ## Install
 
