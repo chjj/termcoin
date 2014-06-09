@@ -2,7 +2,7 @@
   "name": "termcoin",
   "description": "A bitcoin wallet for your terminal.",
   "author": "Christopher Jeffrey",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "main": "./lib/index.js",
   "bin": "./bin/termcoin",
   "man": "./man/termcoin.1",
