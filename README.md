@@ -202,6 +202,15 @@ These aren't necessary, but they might make things nicer for you.
 - **DOGE**: DAwtjssd9y3HQp5vTXqZhsdshxkDzDXoRT
 - **COYE**: 5Vqi6WYbK6fixQ4A1ypiJZXJtJkMBnAfpu
 
+## Dislaimer and Note
+
+It is *your own* responsibility to backup and keep your wallet/privkeys safe.
+The termcoin developer(s) will not be responsible if your coins are lost,
+deleted, or stolen.
+
+Termcoin automatically makes a backup of your wallet every time you write to
+it. Keep this in mind when encrypting it.
+
 ## Contribution and License Agreement
 
 If you contribute code to this project, you are implicitly allowing your code
