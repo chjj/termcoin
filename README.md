@@ -48,9 +48,6 @@ official bitcoin client).
 backend is still supported for other currencies. It's just not as featureful
 due to limitations in the [coin]d rpc server.
 
-termcoin is written in node.js, using [blessed][blessed], and uses bitcoind
-(and optionally other cryptocurrency rpc servers) as its backend.
-
 ## Screenshots
 
 ![](https://raw.githubusercontent.com/chjj/termcoin/master/img/01.png)
@@ -113,6 +110,48 @@ $ bitcoind dumpwallet ~/wallet.dump
 $ termcoin --import-wallet ~/wallet.dump
 # Open our much nicer format:
 $ less ~/.termcoin/wallet.json
+```
+
+### Example Wallet
+
+``` js
+{
+  "version": 1,
+  "ts": 1402363259,
+  "encrypted": false,
+  "compressed": true,
+  "balance": "0.10981134",
+  "accounts": [
+    {
+      "address": "1Lzcrow4haAm6j4vyKhMeFQdHcaE1VbjTc",
+      "label": "main",
+      "priv": "L2bka1uvakQDLabdoPuYEwtTd8a416fjhHyEq99nmaDYeuotsfeG",
+      "pub": "nFB3c1yquakfoEE1A98q1HX9hjCp3kAx3a5UHeNvfwMj",
+      "balance": "0.00993134",
+      "tx": 32
+    },
+    {
+      "address": "1Q3tMMNWdu3pqqhc3Hdt3L5gS26P7FdtyD",
+      "label": "secondary",
+      "priv": "L2ACa1uvakQDLabdoPuaEwtTd8a416fjhHyEq99nmaDYeuotsfHf",
+      "pub": "hY29VUa4xfrs4vDUd4aF3cjkMoH5xegU6VzGNBqjTtCm",
+      "balance": "0.09488",
+      "tx": 10
+    },
+    {
+      "address": "1BKrkLFuyM8BsS5DuwrhPXKc8uFYmsCAAn",
+      "label": "test",
+      "priv": "L2KEa1uvakQDLabdoPuuEwtTd8a416fjhHyEq99nmaDYeuotsEya",
+      "pub": "26srZooFArAzwtQiiQx9LZWTaCupwoVS6QTdQ7CX3QyGa",
+      "balance": "0.005",
+      "tx": 5
+    }
+  ],
+  "recipients": {
+    "195cjSkBUZtpw7ue7mTB6MheP8c3wLkaJe": "noodles",
+    "1RVx9Ezsa3zSMc1QteHnaiTXJ64foyAGe": "maxie"
+  }
+}
 ```
 
 ### Dump your wallet to the standard format
