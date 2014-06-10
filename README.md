@@ -177,7 +177,7 @@ See LICENSE for more info.
 
 [blessed]: https://github.com/chjj/blessed
 [tiny]: https://github.com/chjj/tiny
-[fedor]: https://github.com/indutny
+[indutny]: https://github.com/indutny
 [bn]: https://github.com/indutny/bn.js
 [ecdsa]: https://github.com/indutny/elliptic
 [bcoin]: https://github.com/indutny/bcoin
