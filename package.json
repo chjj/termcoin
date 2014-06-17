@@ -15,6 +15,6 @@
   "scripts": { "test": "node test" },
   "dependencies": {
     "blessed": ">= 0.0.36",
-    "coined": ">= 0.0.3"
+    "coined": ">= 0.0.4"
   }
 }
