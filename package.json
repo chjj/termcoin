@@ -16,5 +16,8 @@
   "dependencies": {
     "blessed": ">= 0.0.37",
     "coined": ">= 0.0.5"
+  },
+  "devDependencies": {
+    "rimraf": "2.2.8"
   }
 }
