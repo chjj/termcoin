@@ -1,5 +1,9 @@
 # termcoin
 
+## Termcoin is no longer maintain
+
+Note that termcoin is no longer maintained. It is not recommended for use.
+
 **termcoin** bitcoin wallet and blockchain explorer for your terminal, written
 for node.js
 
