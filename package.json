@@ -9,13 +9,29 @@
   "preferGlobal": true,
   "repository": "git://github.com/chjj/termcoin.git",
   "homepage": "https://github.com/chjj/termcoin",
-  "bugs": { "url": "http://github.com/chjj/termcoin/issues" },
-  "keywords": ["bitcoin", "tui", "terminal", "curses", "blessed"],
-  "tags": ["bitcoin", "tui", "terminal", "curses", "blessed"],
-  "scripts": { "test": "node test" },
+  "bugs": {
+    "url": "http://github.com/chjj/termcoin/issues"
+  },
+  "keywords": [
+    "bitcoin",
+    "tui",
+    "terminal",
+    "curses",
+    "blessed"
+  ],
+  "tags": [
+    "bitcoin",
+    "tui",
+    "terminal",
+    "curses",
+    "blessed"
+  ],
+  "scripts": {
+    "test": "node test"
+  },
   "dependencies": {
-    "blessed": ">= 0.0.37",
-    "coined": ">= 0.0.5"
+    "blessed": ">= 0.1.0",
+    "coined": "https://github.com/PhantomRay/coined#854689200bad2126c328bbe5b7e398b193f06057"
   },
   "devDependencies": {
     "rimraf": "2.2.8"
