@@ -27,11 +27,12 @@
     "blessed"
   ],
   "scripts": {
-    "test": "node test"
+    "test": "jest"
   },
   "dependencies": {
     "blessed": ">= 0.1.0",
-    "coined": "https://github.com/PhantomRay/coined#854689200bad2126c328bbe5b7e398b193f06057"
+    "coined": "https://github.com/PhantomRay/coined#854689200bad2126c328bbe5b7e398b193f06057",
+    "jest": "^23"
   },
   "devDependencies": {
     "rimraf": "2.2.8"
